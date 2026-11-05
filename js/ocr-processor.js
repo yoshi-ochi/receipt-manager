@@ -8,8 +8,8 @@
 
     const { base64, mimeType } = await this.resizeAndEncode(file, 1200);
 
-    // gemini-2.0-flash エンドポイント（v1beta）
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`;
+    // 最新の推奨モデル gemini-3.8-flash エンドポイント
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${geminiApiKey}`;
 
     const prompt = 
       "添付された画像は日本のレシートまたは手書き領収書です。以下の情報を正確に読み取り、指定のJSONフォーマットのみを出力してください。\n" +
@@ -20,7 +20,7 @@
       "- suggestedCategory: 日本の青色申告決算書における経費勘定科目（租税公課、荷造運賃、水道光熱費、旅費交通費、通信費、広告宣伝費、接待交際費、損害保険料、修繕費、消耗品費、減価償却費、福利厚生費、給料賃金、外注工賃、利子割引料、地代家賃、貸倒金、雑費、仕入）から最も適切なものを1つ選択\n" +
       "- suggestedGenre: 家計簿用（食料品・スーパー、外食・カフェ、日用品・消耗品、趣味・教養・娯楽、交通費、衣類・美容、医療・健康、その他）から1つ選択\n" +
       "- memo: 摘要や用途に関する簡単な要約\n\n" +
-      "出力はMarkdownのバッククォート等を含めず、純粋なJSON文字列のみにしてください。";
+      "出力は純粋なJSON文字列のみにしてください。";
 
     const payload = {
       contents: [
@@ -53,7 +53,11 @@
     }
 
     const resJson = await response.json();
-    const textResult = resJson.candidates[0].content.parts[0].text;
+    let textResult = resJson.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+
+    // Markdownコードフェンス (```json ... ```) が混在した場合の安全な除去
+    textResult = textResult.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/s, "").trim();
+
     const data = JSON.parse(textResult);
 
     return {
