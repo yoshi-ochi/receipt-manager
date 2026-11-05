@@ -1,0 +1,7 @@
+﻿.particle-sphere-wrapper {
+  perspective: 800px;
+}
+
+#particle-sphere-canvas {
+  filter: drop-shadow(0 0 16px rgba(99, 102, 241, 0.45));
+}
