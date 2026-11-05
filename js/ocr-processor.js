@@ -1,5 +1,5 @@
 ﻿/**
- * Receipt OCR Processor (Gemini 2.5/2.0 Client)
+ * Receipt OCR Processor (Gemini 3.8 Flash Client)
  */
 const OCRProcessor = {
   async processImage(file) {
@@ -56,60 +56,47 @@ const OCRProcessor = {
       }
     };
 
-    // 404を回避するため、現行のFlashモデルを指定
-    const models = ['gemini-2.5-flash', 'gemini-2.0-flash'];
-    let lastError = null;
+    // APIの案内に従い gemini-3.8-flash を指定
+    const model = 'gemini-3.8-flash';
+    console.log('[OCRProcessor] Requesting Model: ' + model);
+    const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey;
 
-    for (let i = 0; i < models.length; i++) {
-      const model = models[i];
-      try {
-        console.log('[OCRProcessor] Requesting Model: ' + model);
-        const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(function() { controller.abort(); }, 30000);
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(function() { controller.abort(); }, 25000);
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal
+    });
 
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody),
-          signal: controller.signal
-        });
+    clearTimeout(timeoutId);
 
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          const errData = await response.json().catch(function() { return {}; });
-          throw new Error(errData.error && errData.error.message ? errData.error.message : ('HTTP ' + response.status));
-        }
-
-        const data = await response.json();
-        const candidateText = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] ? data.candidates[0].content.parts[0].text : null;
-        if (!candidateText) {
-          throw new Error('Geminiから解析テキストが得られませんでした。');
-        }
-
-        const cleanJsonStr = candidateText.replace(/^[\s\S]*?\{/, '{').replace(/\}[^}]*$/, '}').trim();
-        const result = JSON.parse(cleanJsonStr);
-
-        return {
-          date: result.date || new Date().toISOString().split('T')[0],
-          store: result.store || '不明店',
-          totalAmount: Number(result.totalAmount) || 0,
-          paymentMethod: result.paymentMethod || '現金',
-          suggestedCategory: result.suggestedCategory || '消耗品費',
-          suggestedGenre: '日用品・消耗品',
-          items: Array.isArray(result.items) ? result.items : [],
-          memo: result.memo || ''
-        };
-
-      } catch (err) {
-        console.warn('[OCRProcessor] ' + model + ' failed:', err);
-        lastError = err;
-      }
+    if (!response.ok) {
+      const errData = await response.json().catch(function() { return {}; });
+      throw new Error(errData.error && errData.error.message ? errData.error.message : ('HTTP ' + response.status));
     }
 
-    throw lastError || new Error('Gemini APIへのリクエストがすべて失敗しました。');
+    const data = await response.json();
+    const candidateText = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] ? data.candidates[0].content.parts[0].text : null;
+    if (!candidateText) {
+      throw new Error('Geminiから解析テキストが得られませんでした。');
+    }
+
+    const cleanJsonStr = candidateText.replace(/^[\s\S]*?\{/, '{').replace(/\}[^}]*$/, '}').trim();
+    const result = JSON.parse(cleanJsonStr);
+
+    return {
+      date: result.date || new Date().toISOString().split('T')[0],
+      store: result.store || '不明店',
+      totalAmount: Number(result.totalAmount) || 0,
+      paymentMethod: result.paymentMethod || '現金',
+      suggestedCategory: result.suggestedCategory || '消耗品費',
+      suggestedGenre: '日用品・消耗品',
+      items: Array.isArray(result.items) ? result.items : [],
+      memo: result.memo || ''
+    };
   },
 
   encodeImageToBase64(file, maxDimension) {
