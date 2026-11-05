@@ -1,5 +1,5 @@
 ﻿/**
- * Receipt OCR Processor (Clean URL Gemini Client)
+ * Receipt OCR Processor (Gemini 2.5/2.0 Client)
  */
 const OCRProcessor = {
   async processImage(file) {
@@ -56,14 +56,14 @@ const OCRProcessor = {
       }
     };
 
-    const models = ['gemini-1.5-flash', 'gemini-1.5-pro'];
+    // 404を回避するため、現行のFlashモデルを指定
+    const models = ['gemini-2.5-flash', 'gemini-2.0-flash'];
     let lastError = null;
 
     for (let i = 0; i < models.length; i++) {
       const model = models[i];
       try {
         console.log('[OCRProcessor] Requesting Model: ' + model);
-        // マークダウンのゴミを完全排除した純粋なURL文字列
         const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey;
 
         const controller = new AbortController();
