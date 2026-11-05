@@ -2,6 +2,7 @@
   let currentMode = "business";
   let currentFilter = "all";
   let currentWorkingItems = [];
+  let confirmedTotalAmount = 0; // OCRで確定した正規の合計金額を保持
   const particleSphere = new ParticleSphere("particle-sphere-canvas");
 
   const tabBusiness = document.getElementById("tab-business");
@@ -28,10 +29,8 @@
   const btnAddItemRow = document.getElementById("btn-add-item-row");
 
   const businessCategoryGroup = document.getElementById("business-category-group");
-  const personalGenreGroup = document.getElementById("personal-genre-group");
   const formBusinessCategory = document.getElementById("form-business-category");
   const formPaymentMethod = document.getElementById("form-payment-method");
-  const formPersonalGenre = document.getElementById("form-personal-genre");
 
   const btnSyncSettings = document.getElementById("btn-sync-settings");
   const btnSyncSheets = document.getElementById("btn-sync-sheets");
@@ -49,14 +48,6 @@
       opt.value = col.name;
       opt.textContent = `${col.name} (${col.type === 'expense' ? '経費' : '収入/原価'})`;
       formBusinessCategory.appendChild(opt);
-    });
-
-    formPersonalGenre.innerHTML = "";
-    APP_CONFIG.PERSONAL_GENRES.forEach(g => {
-      const opt = document.createElement("option");
-      opt.value = g;
-      opt.textContent = g;
-      formPersonalGenre.appendChild(opt);
     });
   }
 
@@ -113,7 +104,6 @@
     }
 
     recordsContainer.innerHTML = allRecords.map(r => {
-      const itemsPreview = (r.items || []).map(i => `${i.name} (¥${i.price})`).join(", ");
       return `
         <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 hover:border-slate-700 transition">
           <div class="flex items-start justify-between">
@@ -127,8 +117,7 @@
                   ${r.paymentMethod || '現金'}
                 </span>
               </div>
-              <p class="text-[11px] text-slate-400 truncate">${itemsPreview || '明細なし'}</p>
-              ${r.memo ? `<p class="text-[10px] text-slate-500 mt-0.5 italic">摘要: ${r.memo}</p>` : ''}
+              <p class="text-[11px] text-slate-300 font-medium mt-1 truncate">${r.memo || '内訳なし'}</p>
               <div class="text-[10px] text-slate-500 mt-1.5">${r.date}</div>
             </div>
             <div class="text-right flex flex-col justify-between items-end">
@@ -240,7 +229,7 @@
 
     loaderOverlay.classList.remove("hidden");
     particleSphere.start();
-    document.getElementById("loader-text").textContent = "レシート文字を行順解析中...";
+    document.getElementById("loader-text").textContent = "レシート解析中...";
 
     try {
       const extracted = await OCRProcessor.processImage(file);
@@ -262,23 +251,25 @@
     formMemo.value = data.memo || "";
     formPaymentMethod.value = data.paymentMethod || "現金";
     formBusinessCategory.value = data.suggestedCategory || "消耗品費";
+    
+    // 合計金額を厳密固定（明細の多重加算を完全防止）
+    confirmedTotalAmount = Number(data.totalAmount || 0);
     currentWorkingItems = data.items ? [...data.items] : [];
 
     renderItemsTable();
+    formTotalDisplay.textContent = `¥${confirmedTotalAmount.toLocaleString()}`;
     editModal.classList.remove("hidden");
   }
 
   function closeEditModal() {
     editModal.classList.add("hidden");
     currentWorkingItems = [];
+    confirmedTotalAmount = 0;
   }
 
   function renderItemsTable() {
     itemsTableBody.innerHTML = "";
-    let total = 0;
-
     currentWorkingItems.forEach((item, index) => {
-      total += Number(item.price || 0);
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td class="py-1.5 px-3">
@@ -296,13 +287,13 @@
       itemsTableBody.appendChild(tr);
     });
 
-    formTotalDisplay.textContent = `¥${total.toLocaleString()}`;
     lucide.createIcons();
 
     document.querySelectorAll(".item-name-input").forEach(input => {
       input.addEventListener("input", (e) => {
         const idx = e.target.getAttribute("data-index");
         currentWorkingItems[idx].name = e.target.value;
+        syncMemoFromItems();
       });
     });
 
@@ -319,13 +310,23 @@
         const idx = btn.getAttribute("data-index");
         currentWorkingItems.splice(idx, 1);
         renderItemsTable();
+        recalcTotal();
+        syncMemoFromItems();
       });
     });
   }
 
   function recalcTotal() {
-    const total = currentWorkingItems.reduce((sum, item) => sum + Number(item.price || 0), 0);
-    formTotalDisplay.textContent = `¥${total.toLocaleString()}`;
+    // ユーザーが手動で行編集・金額変更した場合のみ合算
+    const sum = currentWorkingItems.reduce((s, it) => s + Number(it.price || 0), 0);
+    if (sum > 0) {
+      confirmedTotalAmount = sum;
+    }
+    formTotalDisplay.textContent = `¥${confirmedTotalAmount.toLocaleString()}`;
+  }
+
+  function syncMemoFromItems() {
+    formMemo.value = currentWorkingItems.map(it => it.name).filter(n => n.length > 0).join("、");
   }
 
   btnAddItemRow.addEventListener("click", () => {
@@ -334,7 +335,6 @@
   });
 
   modalBtnSave.addEventListener("click", async () => {
-    const total = currentWorkingItems.reduce((sum, item) => sum + Number(item.price || 0), 0);
     const store = formStore.value.trim() || "不明店";
 
     const record = {
@@ -343,14 +343,14 @@
       store: store,
       memo: formMemo.value.trim(),
       items: currentWorkingItems,
-      total: total,
+      total: confirmedTotalAmount, // 確実に合計金額のみを保存
       category: formBusinessCategory.value,
       paymentMethod: formPaymentMethod.value
     };
 
     loaderOverlay.classList.remove("hidden");
     particleSphere.start();
-    document.getElementById("loader-text").textContent = "仕訳帳・元帳・出納帳へ記帳中...";
+    document.getElementById("loader-text").textContent = "3帳簿へ記帳中...";
 
     await AppStorage.saveRecord(record);
 
