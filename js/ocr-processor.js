@@ -1,49 +1,83 @@
-﻿const OCRProcessor = {
+﻿/**
+ * Receipt OCR & Data Extraction Pipeline (GAS + Gemini API 連動版)
+ */
+const OCRProcessor = {
   async processImage(file) {
-    // 擬似読取ディレイ
-    await new Promise(resolve => setTimeout(resolve, 2400));
-
-    const today = new Date().toISOString().split('T')[0];
-    const sampleVendors = ["セブン-イレブン", "ヨドバシカメラ", "スーパーライフ", "無印良品", "スターバックス"];
-    const randomStore = sampleVendors[Math.floor(Math.random() * sampleVendors.length)];
-
-    let parsedItems = [];
-    let suggestedCategory = "消耗品費";
-    let suggestedGenre = "日用品・消耗品";
-
-    if (randomStore.includes("セブン")) {
-      parsedItems = [
-        { name: "ドリップコーヒー R", price: 150 },
-        { name: "サンドイッチ", price: 340 }
-      ];
-      suggestedCategory = "雑費";
-      suggestedGenre = "外食・カフェ";
-    } else if (randomStore.includes("ヨドバシ")) {
-      parsedItems = [
-        { name: "USB Type-C ケーブル 1m", price: 1280 },
-        { name: "コピー用紙 A4 500枚", price: 580 }
-      ];
-      suggestedCategory = "消耗品費";
-      suggestedGenre = "趣味・教養・娯楽";
-    } else {
-      parsedItems = [
-        { name: "文房具・事務用品", price: 420 },
-        { name: "ノート", price: 280 }
-      ];
-      suggestedCategory = "消耗品費";
-      suggestedGenre = "日用品・消耗品";
+    const gasUrl = AppStorage.getGasUrl();
+    if (!gasUrl) {
+      alert("Googleスプレッドシート（GAS）のURLが設定されていません。\n右上のシート設定アイコンからURLを登録してください。");
+      throw new Error("GAS URL is not configured");
     }
 
-    const total = parsedItems.reduce((sum, item) => sum + item.price, 0);
+    // 画像のリサイズ・Base64変換（通信負荷軽減のため長辺1200pxに圧縮）
+    const { base64, mimeType } = await this.resizeAndEncode(file, 1200);
+
+    const payload = {
+      action: "ocr",
+      base64Image: base64,
+      mimeType: mimeType
+    };
+
+    const response = await fetch(gasUrl, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" }, // GASのCORSプリフライト回避のためtext/plain指定
+      body: JSON.stringify(payload)
+    });
+
+    const resJson = await response.json();
+    if (resJson.status !== "success") {
+      throw new Error(resJson.message || "OCR解析に失敗しました");
+    }
+
+    const data = resJson.data;
 
     return {
-      date: today,
-      store: randomStore,
-      items: parsedItems,
-      totalAmount: total,
-      suggestedCategory: suggestedCategory,
-      suggestedGenre: suggestedGenre,
-      memo: `${randomStore}にて購入`
+      date: data.date || new Date().toISOString().split('T')[0],
+      store: data.store || "不明店",
+      items: data.items && data.items.length > 0 ? data.items : [{ name: "合算品目", price: data.totalAmount || 0 }],
+      totalAmount: Number(data.totalAmount || 0),
+      suggestedCategory: data.suggestedCategory || "消耗品費",
+      suggestedGenre: data.suggestedGenre || "その他",
+      memo: data.memo || `${data.store || ""} レシート`
     };
+  },
+
+  // クライアント側で画像を縮小してBase64を抽出
+  resizeAndEncode(file, maxDimension) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const mimeType = "image/jpeg";
+          const dataUrl = canvas.toDataURL(mimeType, 0.85);
+          const base64 = dataUrl.split(",")[1];
+          resolve({ base64, mimeType });
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   }
 };
