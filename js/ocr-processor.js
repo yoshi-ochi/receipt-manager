@@ -8,7 +8,8 @@
 
     const { base64, mimeType } = await this.resizeAndEncode(file, 1200);
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiApiKey}`;
+    // gemini-2.0-flash エンドポイント（v1beta）
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`;
 
     const prompt = 
       "添付された画像は日本のレシートまたは手書き領収書です。以下の情報を正確に読み取り、指定のJSONフォーマットのみを出力してください。\n" +
@@ -48,7 +49,7 @@
 
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.error?.message || "Gemini APIエラーが発生しました");
+      throw new Error(errData.error?.message || `HTTP ${response.status}: APIリクエストに失敗しました`);
     }
 
     const resJson = await response.json();
