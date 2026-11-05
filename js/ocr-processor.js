@@ -1,35 +1,59 @@
-﻿/**
- * Receipt OCR & Data Extraction Pipeline (GAS + Gemini API 連動版)
- */
-const OCRProcessor = {
+﻿const OCRProcessor = {
   async processImage(file) {
-    const gasUrl = AppStorage.getGasUrl();
-    if (!gasUrl) {
-      alert("Googleスプレッドシート（GAS）のURLが設定されていません。\n右上のシート設定アイコンからURLを登録してください。");
-      throw new Error("GAS URL is not configured");
+    const geminiApiKey = AppStorage.getGeminiKey();
+    if (!geminiApiKey) {
+      alert("Gemini API キーが未設定です。\n右上の設定アイコンからAPIキーを登録してください。");
+      throw new Error("Gemini API key is not configured");
     }
 
-    // 画像のリサイズ・Base64変換（通信負荷軽減のため長辺1200pxに圧縮）
     const { base64, mimeType } = await this.resizeAndEncode(file, 1200);
 
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiApiKey}`;
+
+    const prompt = 
+      "添付された画像は日本のレシートまたは手書き領収書です。以下の情報を正確に読み取り、指定のJSONフォーマットのみを出力してください。\n" +
+      "- date: 購入日（YYYY-MM-DD形式。不明なら本日の日付）\n" +
+      "- store: 発行元・店舗名・取引先名\n" +
+      "- items: 購入した品目名とその税込金額の配列 [{ \"name\": \"...\", \"price\": 数値 }]\n" +
+      "- totalAmount: 合計支払金額（数値）\n" +
+      "- suggestedCategory: 日本の青色申告決算書における経費勘定科目（租税公課、荷造運賃、水道光熱費、旅費交通費、通信費、広告宣伝費、接待交際費、損害保険料、修繕費、消耗品費、減価償却費、福利厚生費、給料賃金、外注工賃、利子割引料、地代家賃、貸倒金、雑費、仕入）から最も適切なものを1つ選択\n" +
+      "- suggestedGenre: 家計簿用（食料品・スーパー、外食・カフェ、日用品・消耗品、趣味・教養・娯楽、交通費、衣類・美容、医療・健康、その他）から1つ選択\n" +
+      "- memo: 摘要や用途に関する簡単な要約\n\n" +
+      "出力はMarkdownのバッククォート等を含めず、純粋なJSON文字列のみにしてください。";
+
     const payload = {
-      action: "ocr",
-      base64Image: base64,
-      mimeType: mimeType
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            {
+              inline_data: {
+                mime_type: mimeType,
+                data: base64
+              }
+            }
+          ]
+        }
+      ],
+      generationConfig: {
+        response_mime_type: "application/json"
+      }
     };
 
-    const response = await fetch(gasUrl, {
+    const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "text/plain" }, // GASのCORSプリフライト回避のためtext/plain指定
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
 
-    const resJson = await response.json();
-    if (resJson.status !== "success") {
-      throw new Error(resJson.message || "OCR解析に失敗しました");
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error?.message || "Gemini APIエラーが発生しました");
     }
 
-    const data = resJson.data;
+    const resJson = await response.json();
+    const textResult = resJson.candidates[0].content.parts[0].text;
+    const data = JSON.parse(textResult);
 
     return {
       date: data.date || new Date().toISOString().split('T')[0],
@@ -42,7 +66,6 @@ const OCRProcessor = {
     };
   },
 
-  // クライアント側で画像を縮小してBase64を抽出
   resizeAndEncode(file, maxDimension) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();

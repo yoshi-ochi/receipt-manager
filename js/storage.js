@@ -40,6 +40,14 @@
     localStorage.setItem(APP_CONFIG.STORAGE_KEYS.GAS_URL, url.trim());
   },
 
+  getGeminiKey() {
+    return localStorage.getItem(APP_CONFIG.STORAGE_KEYS.GEMINI_KEY) || "";
+  },
+
+  setGeminiKey(key) {
+    localStorage.setItem(APP_CONFIG.STORAGE_KEYS.GEMINI_KEY, key.trim());
+  },
+
   async syncToGoogleSheets(record, gasUrl) {
     const payload = {
       type: record.mode,

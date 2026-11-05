@@ -35,6 +35,7 @@
   const settingsBtnClose = document.getElementById("settings-btn-close");
   const settingsBtnSave = document.getElementById("settings-btn-save");
   const settingGasUrl = document.getElementById("setting-gas-url");
+  const settingGeminiKey = document.getElementById("setting-gemini-key");
   const btnExportCsv = document.getElementById("btn-export-csv");
 
   function initDropdowns() {
@@ -165,7 +166,7 @@
     } catch (err) {
       particleSphere.stop();
       loaderOverlay.classList.add("hidden");
-      alert("レシートの読み取りに失敗しました。");
+      alert(err.message || "レシートの読み取りに失敗しました。");
       console.error(err);
     } finally {
       cameraInput.value = "";
@@ -285,15 +286,18 @@
   tabBusiness.addEventListener("click", () => setMode("business"));
   tabPersonal.addEventListener("click", () => setMode("personal"));
 
+  // 設定モーダルのイベント
   btnSyncSettings.addEventListener("click", () => {
     settingGasUrl.value = AppStorage.getGasUrl();
+    settingGeminiKey.value = AppStorage.getGeminiKey();
     settingsModal.classList.remove("hidden");
   });
   settingsBtnClose.addEventListener("click", () => settingsModal.classList.add("hidden"));
   settingsBtnSave.addEventListener("click", () => {
     AppStorage.setGasUrl(settingGasUrl.value);
+    AppStorage.setGeminiKey(settingGeminiKey.value);
     settingsModal.classList.add("hidden");
-    alert("スプレッドシート連携URLを保存しました。");
+    alert("設定を保存しました。");
   });
 
   btnExportCsv.addEventListener("click", () => {

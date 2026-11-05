@@ -40,6 +40,7 @@ const APP_CONFIG = {
 
   STORAGE_KEYS: {
     RECORDS: "receipt_app_records_v1",
-    GAS_URL: "receipt_app_gas_url_v1"
+    GAS_URL: "receipt_app_gas_url_v1",
+    GEMINI_KEY: "receipt_app_gemini_key_v1"
   }
 };
