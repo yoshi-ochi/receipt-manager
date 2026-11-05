@@ -141,3 +141,5 @@ const OCRProcessor = {
     });
   }
 };
+
+window.OCRProcessor = OCRProcessor;
