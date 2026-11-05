@@ -1,5 +1,5 @@
 ﻿/**
- * Receipt OCR Processor (Google Cloud Vision API + 日本レシート専用スマートパーサー)
+ * Receipt OCR Processor (Google Cloud Vision API + 日本レシート・ダイソー特化パーサー)
  */
 const OCRProcessor = {
   async processImage(file) {
@@ -39,7 +39,10 @@ const OCRProcessor = {
       throw new Error("文字を検出できませんでした。もう少し明るい場所で正面から撮影してください。");
     }
 
-    return this.parseSmartReceipt(annotation.text);
+    console.log("=== Cloud Vision Raw Text ===");
+    console.log(annotation.text);
+
+    return this.parseDaisoReceipt(annotation.text);
   },
 
   encodeImageToBase64(file, maxDimension) {
@@ -50,14 +53,13 @@ const OCRProcessor = {
         img.onload = () => {
           let w = img.width;
           let h = img.height;
-          // リサイズ計算（変数の参照バグを修正）
           if (w > maxDimension || h > maxDimension) {
             if (w > h) {
               h = Math.round((h * maxDimension) / w);
               w = maxDimension;
             } else {
-              w = Math.round((w * maxDimension) / h);
-              h = maxDimension;
+              w = Math.round((width * maxDimension) / height);
+              height = maxDimension;
             }
           }
           const canvas = document.createElement("canvas");
@@ -75,112 +77,88 @@ const OCRProcessor = {
     });
   },
 
-  /**
-   * レシート構造化パースエンジン
-   */
-  parseSmartReceipt(fullText) {
-    const rawLines = fullText.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+  parseDaisoReceipt(fullText) {
+    const lines = fullText.split("\n").map(l => l.trim()).filter(l => l.length > 0);
 
-    let store = "";
+    let store = "ダイソー";
     let date = new Date().toISOString().split("T")[0];
     let totalAmount = 0;
     let items = [];
 
-    // 1. 日付の検出 (YYYY年MM月DD日 または YYYY/MM/DD, YYYY-MM-DD, 令和X年)
+    // 1. 日付の検出 (2026年10月26日 など)
     const dateMatch = fullText.match(/(20\d{2})[年\/\-\.\s](\d{1,2})[月\/\-\.\s](\d{1,2})/);
     if (dateMatch) {
-      const y = dateMatch[1];
-      const m = dateMatch[2].padStart(2, "0");
-      const d = dateMatch[3].padStart(2, "0");
-      date = `${y}-${m}-${d}`;
+      date = `${dateMatch[1]}-${dateMatch[2].padStart(2, "0")}-${dateMatch[3].padStart(2, "0")}`;
     }
 
-    // 2. 店舗名の抽出（先頭付近から管理文字列・記号以外の有力行を取得）
-    const headerExcludeRegex = /領収|レシート|No|TEL|電話|登録|20\d{2}|株式会社|チェーン|お買上|税|伝票/i;
-    for (let i = 0; i < Math.min(6, rawLines.length); i++) {
-      const line = rawLines[i].replace(/[!！\*#=＝\-_]/g, "").trim();
-      if (line.length >= 2 && !headerExcludeRegex.test(line)) {
-        store = rawLines[i].trim();
-        break;
-      }
+    // 2. 店舗名（DAISO / だんぜん!ダイソー / 支店名）
+    const storeBranchMatch = fullText.match(/ダイソー[^\n\r]*店/);
+    if (storeBranchMatch) {
+      store = storeBranchMatch[0].trim();
+    } else if (fullText.includes("ダイソー") || fullText.includes("DAISO")) {
+      store = "ダイソー";
     }
-    if (!store && rawLines.length > 0) store = rawLines[0];
 
-    // 3. 管理情報・メタ情報の除外正規表現フィルター
-    const metaFilter = /(レシート\s*No|レジ\s*No|伝票|端末|取引|係員|担当|責任者|TEL|電話|FAX|登録番号|事業者|登録\s*No|T\d{7,13}|P\d{6,}|\d{1,2}:\d{2}|コード|カード|クレジット|現金|お預|釣|買上計|小計|合計|内税|外税|対象額|値引|割引|ポイント)/i;
-
-    // 4. 合計金額の特定
-    for (let i = 0; i < rawLines.length; i++) {
-      const line = rawLines[i];
-      if (line.match(/(合\s*計|総\s*計|お買上額|ご請求|お支払い|現\s*計)/i)) {
-        let searchScope = line;
-        if (i + 1 < rawLines.length && !rawLines[i + 1].match(/合|計|税|預/)) {
-          searchScope += " " + rawLines[i + 1];
-        }
-        const numMatch = searchScope.replace(/[,，\s]/g, "").match(/([¥￥\\])?(\d{2,8})(円)?/);
-        if (numMatch) {
-          totalAmount = parseInt(numMatch[2], 10);
+    // 3. 合計金額の検出（「合計」「合言十」「ご請求」「ご利用金額」「PayPay... ¥440」等）
+    const totalRegex = /(合\s*[計言十]|ご利用金額|PayPay|クレジット|現\s*金)[^\d¥￥]*[¥￥\\]?\s*(\d{2,7})/i;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      const m = line.match(totalRegex);
+      if (m && !line.match(/対象|税/)) {
+        const val = parseInt(m[2], 10);
+        if (val > 0 && val < 500000) {
+          totalAmount = val;
+          break;
         }
       }
     }
 
-    // 5. 明細行の抽出（中段エリアから品名と金額を抽出）
-    for (let i = 0; i < rawLines.length; i++) {
-      const line = rawLines[i];
-
-      // 合計・小計ゾーンに突入したら明細終了
-      if (line.match(/^(合\s*計|総\s*計|小\s*計|お買上額|ご請求|お支払|現\s*計|クレジット)/i)) {
-        break;
+    // 「¥440-」などの手書き・領収証金額表記からのフォールバック
+    if (totalAmount === 0) {
+      const markMatch = fullText.match(/[¥￥\\]\s*(\d{2,7})\s*[\-ー]/);
+      if (markMatch) {
+        totalAmount = parseInt(markMatch[1], 10);
       }
+    }
 
-      // ヘッダーや管理番号の除外
-      if (metaFilter.test(line)) {
+    // 4. 明細商品の検出
+    // パターン: 「ガラスキャニスター (ステ ¥100外」や「ワイヤーネットかご (横型 ¥100外」
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i];
+
+      // 管理番号行、バーコード、インボイス番号、上部領収書エリアの遮断
+      if (line.match(/(No\.|レジ|担当|TEL|電話|登録番号|T\d{7,13}|P\d{6,}|CEU\d|伝票|小計|合計|合言十|対象|お釣|お預|PayPay|売上)/i)) {
         continue;
       }
 
-      // 金額パターン（行末または末尾付近にある数値: 例 "100", "¥110", "300 外", "120※"）
-      const priceMatch = line.replace(/[,，]/g, "").match(/([¥￥\\])?\s*([1-9]\d{1,5})\s*(円|※|[*]|外|内|D|非)?$/);
+      // 金額を含む明細行マッチング（「¥100外」「¥200」「100円」など）
+      const itemMatch = line.match(/^(.*?)[¥￥\\]?\s*([1-9]\d{1,5})\s*(外|内|円|※)?$/);
 
-      if (priceMatch) {
-        const price = parseInt(priceMatch[2], 10);
-        let itemName = line.replace(/[,，]/g, "").substring(0, priceMatch.index).trim();
+      if (itemMatch) {
+        let name = itemMatch[1].trim();
+        let price = parseInt(itemMatch[2], 10);
 
-        // 記号や不要文字のクリーンアップ
-        itemName = itemName.replace(/^[\s\d\-—―\*※・/／]+/, "").replace(/[\-—―\*※/／\s]+$/, "").trim();
+        // 不要記号の除去
+        name = name.replace(/^[\-—―\*※・/／\s\d]+/, "").replace(/[\-—―\*※/／\s]+$/, "").trim();
 
-        if (itemName.length >= 2 && !metaFilter.test(itemName) && price >= 10 && price < 1000000) {
-          items.push({ name: itemName, price: price });
+        // 品名として妥当（2文字以上かつ管理英数字でない）
+        if (name.length >= 2 && !name.match(/^[A-Z0-9\-\.\:]+$/i)) {
+          // 税抜表記の場合は10%税込に補正（ダイソーの100外→110円、200外→220円）
+          if (line.includes("外")) {
+            price = Math.round(price * 1.1);
+          }
+          items.push({ name: name, price: price });
         }
       }
     }
 
-    // 合計が未取得で明細がある場合は明細合計を適用
+    // 合計金額が拾えていて明細合計と一致しない場合や、明細が空の場合の補完
     if (totalAmount === 0 && items.length > 0) {
       totalAmount = items.reduce((sum, item) => sum + item.price, 0);
     }
 
-    // 明細が0件の場合のフォールバック
     if (items.length === 0) {
       items.push({ name: `${store} お買上分`, price: totalAmount });
-    }
-
-    // 6. 勘定科目・家計簿ジャンル判定
-    const lower = fullText.toLowerCase();
-    let suggestedCategory = "消耗品費";
-    let suggestedGenre = "日用品・消耗品";
-
-    if (/ダイソー|セリア|キャンドゥ|無印|ロフト|文具|事務|ホームセンター|コーナン|カインズ/.test(store + lower)) {
-      suggestedCategory = "消耗品費";
-      suggestedGenre = "日用品・消耗品";
-    } else if (/スーパー|ライフ|イオン|西友|業務スーパー|精肉|青果|生鮮|食品|弁当/.test(store + lower)) {
-      suggestedCategory = "福利厚生費";
-      suggestedGenre = "食料品・スーパー";
-    } else if (/カフェ|喫茶|スタバ|ドトール|居酒屋|レストラン|食堂|ランチ|マクドナルド/.test(store + lower)) {
-      suggestedCategory = "接待交際費";
-      suggestedGenre = "外食・カフェ";
-    } else if (/ガソリン|エネオス|出光|駐車|タイムズ|jr|高速|タクシー|交通/.test(store + lower)) {
-      suggestedCategory = "旅費交通費";
-      suggestedGenre = "交通費";
     }
 
     return {
@@ -188,8 +166,8 @@ const OCRProcessor = {
       store: store,
       items: items,
       totalAmount: totalAmount,
-      suggestedCategory: suggestedCategory,
-      suggestedGenre: suggestedGenre,
+      suggestedCategory: "消耗品費",
+      suggestedGenre: "日用品・消耗品",
       memo: `${store}（${items.map(i => i.name).slice(0, 2).join('、')}等）`
     };
   }
