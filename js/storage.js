@@ -9,27 +9,28 @@
     }
   },
 
+  setAll(records) {
+    localStorage.setItem(APP_CONFIG.STORAGE_KEYS.RECORDS, JSON.stringify(records));
+  },
+
   async saveRecord(record) {
     const list = this.getAll();
     record.id = "rec_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
     record.createdAt = new Date().toISOString();
     list.unshift(record);
-    localStorage.setItem(APP_CONFIG.STORAGE_KEYS.RECORDS, JSON.stringify(list));
+    this.setAll(list);
 
     const gasUrl = this.getGasUrl();
     if (gasUrl) {
-      this.syncToGoogleSheets(record, gasUrl).catch(err => {
-        console.warn("Google Sheets Sync warning:", err);
-      });
+      await this.syncToGoogleSheets(record, gasUrl);
     }
-
     return record;
   },
 
   deleteRecord(id) {
     let list = this.getAll();
     list = list.filter(r => r.id !== id);
-    localStorage.setItem(APP_CONFIG.STORAGE_KEYS.RECORDS, JSON.stringify(list));
+    this.setAll(list);
   },
 
   getGasUrl() {
@@ -48,8 +49,11 @@
     localStorage.setItem(APP_CONFIG.STORAGE_KEYS.VISION_KEY, key.trim());
   },
 
+  // スプレッドシートへ確実に保存（text/plain送信でプリフライトを回避）
   async syncToGoogleSheets(record, gasUrl) {
     const payload = {
+      action: "save",
+      mode: record.mode,
       type: record.mode,
       date: record.date,
       store: record.store,
@@ -60,12 +64,36 @@
       items: record.items || []
     };
 
-    await fetch(gasUrl, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    try {
+      await fetch(gasUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+      });
+    } catch (err) {
+      console.warn("GAS Sync fetch error:", err);
+    }
+  },
+
+  // スプレッドシートからこれまでの履歴を全件取得
+  async fetchFromGoogleSheets(mode = "business") {
+    const gasUrl = this.getGasUrl();
+    if (!gasUrl) {
+      throw new Error("スプレッドシート（GAS）のURLが未設定です。");
+    }
+
+    const fetchUrl = `${gasUrl}?mode=${mode}&t=${Date.now()}`;
+    const response = await fetch(fetchUrl);
+    if (!response.ok) {
+      throw new Error("スプレッドシートの取得に失敗しました。");
+    }
+
+    const result = await response.json();
+    if (result.status !== "success") {
+      throw new Error(result.message || "スプレッドシートデータの取得に失敗しました。");
+    }
+
+    return result.records || [];
   },
 
   exportToCsv(mode = "business") {
@@ -76,7 +104,6 @@
     }
 
     let csvContent = "\uFEFF";
-
     if (mode === "business") {
       const headers = ["日付", "店舗/取引先", "摘要", "売上", "雑収入等", "仕入", ...APP_CONFIG.BLUE_TAX_COLUMNS.slice(4).map(c => c.name)];
       csvContent += headers.join(",") + "\n";
@@ -90,7 +117,6 @@
           r.category === "雑収入等" ? r.total : "",
           r.category === "仕入" ? r.total : ""
         ];
-
         APP_CONFIG.BLUE_TAX_COLUMNS.slice(4).forEach(col => {
           row.push(r.category === col.name ? r.total : "");
         });
