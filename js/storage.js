@@ -49,7 +49,7 @@
     localStorage.setItem(APP_CONFIG.STORAGE_KEYS.VISION_KEY, key.trim());
   },
 
-  // スプレッドシートへ確実に保存（text/plain送信でプリフライトを回避）
+  // mode: "no-cors" で送信し、CORSエラーを完全に回避してスプシに保存
   async syncToGoogleSheets(record, gasUrl) {
     const payload = {
       action: "save",
@@ -67,33 +67,55 @@
     try {
       await fetch(gasUrl, {
         method: "POST",
+        mode: "no-cors",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(payload)
       });
+      console.log("Successfully sent data to Google Sheets via no-cors mode.");
     } catch (err) {
       console.warn("GAS Sync fetch error:", err);
     }
   },
 
-  // スプレッドシートからこれまでの履歴を全件取得
-  async fetchFromGoogleSheets(mode = "business") {
+  // JSONP方式でCORS制限を受けずにスプシ履歴を全件取得
+  fetchFromGoogleSheets(mode = "business") {
     const gasUrl = this.getGasUrl();
     if (!gasUrl) {
-      throw new Error("スプレッドシート（GAS）のURLが未設定です。");
+      return Promise.reject(new Error("スプレッドシート（GAS）のURLが未設定です。"));
     }
 
-    const fetchUrl = `${gasUrl}?mode=${mode}&t=${Date.now()}`;
-    const response = await fetch(fetchUrl);
-    if (!response.ok) {
-      throw new Error("スプレッドシートの取得に失敗しました。");
-    }
+    return new Promise((resolve, reject) => {
+      const callbackName = "gas_callback_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+      const script = document.createElement("script");
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error("スプレッドシートの取得がタイムアウトしました。"));
+      }, 15000);
 
-    const result = await response.json();
-    if (result.status !== "success") {
-      throw new Error(result.message || "スプレッドシートデータの取得に失敗しました。");
-    }
+      function cleanup() {
+        clearTimeout(timeout);
+        if (script.parentNode) script.parentNode.removeChild(script);
+        delete window[callbackName];
+      }
 
-    return result.records || [];
+      window[callbackName] = (res) => {
+        cleanup();
+        if (res && res.status === "success") {
+          resolve(res.records || []);
+        } else {
+          reject(new Error(res ? res.message : "データ取得に失敗しました。"));
+        }
+      };
+
+      script.onerror = () => {
+        cleanup();
+        reject(new Error("GASスクリプトの読み込みに失敗しました。URLまたはアクセス権限をご確認ください。"));
+      };
+
+      const sep = gasUrl.includes("?") ? "&" : "?";
+      script.src = `${gasUrl}${sep}mode=${mode}&callback=${callbackName}&_=${Date.now()}`;
+      document.body.appendChild(script);
+    });
   },
 
   exportToCsv(mode = "business") {
