@@ -26,7 +26,7 @@
       </div>
       <div>
         <h1 class="text-sm font-bold tracking-tight text-white leading-none">Receipt Manager</h1>
-        <p class="text-[10px] text-slate-400 mt-0.5">青色申告（仕訳帳・元帳・出納帳）自動化</p>
+        <p class="text-[10px] text-slate-400 mt-0.5">Gemini AI × 青色申告 3帳簿連携</p>
       </div>
     </div>
     
@@ -84,7 +84,7 @@
   <div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent pointer-events-none z-20 flex justify-center">
     <label for="camera-input" class="pointer-events-auto flex items-center justify-center space-x-2 bg-gradient-to-r from-indigo-500 to-cyan-500 hover:from-indigo-600 hover:to-cyan-600 text-white font-bold py-3.5 px-7 rounded-full shadow-xl shadow-indigo-500/25 active:scale-95 transition cursor-pointer">
       <i data-lucide="camera" class="w-5 h-5"></i>
-      <span class="text-sm">レシートを撮影・読取</span>
+      <span class="text-sm">レシートを撮影（Gemini解析）</span>
     </label>
     <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden">
   </div>
@@ -94,8 +94,8 @@
     <div class="particle-sphere-wrapper relative flex items-center justify-center">
       <canvas id="particle-sphere-canvas" width="280" height="280" class="w-[240px] h-[240px]"></canvas>
     </div>
-    <p id="loader-text" class="text-sm font-medium tracking-wide text-indigo-300 mt-4 animate-pulse">レシートを解析中...</p>
-    <p class="text-[11px] text-slate-500 mt-1">行ごとの品名と金額を自動抽出しています</p>
+    <p id="loader-text" class="text-sm font-medium tracking-wide text-indigo-300 mt-4 animate-pulse">Gemini AIでレシートを精密理解中...</p>
+    <p class="text-[11px] text-slate-500 mt-1">店名・明細・決済手段を文脈から直接抽出しています</p>
   </div>
 
   <!-- 確認・修正モーダル -->
@@ -191,7 +191,7 @@
     </div>
   </div>
 
-  <!-- 設定モーダル -->
+  <!-- 設定モーダル（Gemini API Key） -->
   <div id="settings-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 hidden flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl p-5 shadow-2xl">
       <h3 class="text-sm font-bold text-white mb-2 flex items-center gap-1.5">
@@ -199,8 +199,9 @@
       </h3>
       <div class="space-y-4">
         <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1">Google Cloud Vision API Key</label>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Google Gemini API Key</label>
           <input type="password" id="setting-vision-key" placeholder="AIzaSy..." class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500">
+          <p class="text-[10px] text-slate-500 mt-1">Google AI Studioで取得したAPIキー。無料枠（15RPM）で無制限に高精度認識できます。</p>
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-300 mb-1">GAS Web App URL (スプレッドシート連携)</label>
