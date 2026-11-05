@@ -1,11 +1,11 @@
 ﻿/**
- * Receipt OCR Processor (Direct Gemini Multimodal Client)
+ * Receipt OCR Processor (Safe Literal Client)
  */
 const OCRProcessor = {
   async processImage(file) {
     const apiKey = AppStorage.getVisionKey();
     if (!apiKey) {
-      alert("Google Gemini API キーが未設定です。\n右上の歯車設定からGoogle AI Studioで取得したAPIキーを入力してください。");
+      alert("Google Gemini API キーが未設定です。\n右上の設定から入力してください。");
       throw new Error("Gemini API key is not configured");
     }
 
@@ -14,8 +14,8 @@ const OCRProcessor = {
   },
 
   async callGeminiAPI(base64Image, apiKey) {
-    // 構文エラーを回避するため、単一引用符でプロンプトを構成
-    const promptText = [
+    // 構文エラーを防止するため、単一引用符とjoinで安全に組み立て
+    const promptLines = [
       '添付されたレシートまたは領収書の画像を正確に読み取り、指定のJSON形式のみを出力してください。',
       'Markdownのコードフェンスや解説文は含めず、純粋なJSONオブジェクトのみを返してください。',
       '',
@@ -34,7 +34,8 @@ const OCRProcessor = {
       '【注意事項】',
       '- totalAmount は内消費税やお釣り、小計ではなく、実際に決済・支払われた総額を正確に入れてください。',
       '- ガソリンスタンドの場合、給油量（L数）を必ずmemoや品名に含めてください。'
-    ].join('\n');
+    ];
+    const promptText = promptLines.join('\n');
 
     const requestBody = {
       contents: [
@@ -62,11 +63,11 @@ const OCRProcessor = {
     for (let i = 0; i < models.length; i++) {
       const model = models[i];
       try {
-        console.log('[OCRProcessor] Requesting Gemini Model: ' + model + '...');
+        console.log('[OCRProcessor] Requesting Model: ' + model);
         const url = '[https://generativelanguage.googleapis.com/v1beta/models/](https://generativelanguage.googleapis.com/v1beta/models/)' + model + ':generateContent?key=' + apiKey;
 
         const controller = new AbortController();
-        const timeout = setTimeout(function() { controller.abort(); }, 25000);
+        const timeoutId = setTimeout(function() { controller.abort(); }, 25000);
 
         const response = await fetch(url, {
           method: 'POST',
@@ -75,7 +76,7 @@ const OCRProcessor = {
           signal: controller.signal
         });
 
-        clearTimeout(timeout);
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           const errData = await response.json().catch(function() { return {}; });
@@ -88,7 +89,6 @@ const OCRProcessor = {
           throw new Error('Geminiから解析テキストが得られませんでした。');
         }
 
-        // 文字列前後のバッククォートや余分な文字を安全に正規化
         const cleanJsonStr = candidateText.replace(/^[\s\S]*?\{/, '{').replace(/\}[^}]*$/, '}').trim();
         const result = JSON.parse(cleanJsonStr);
 
