@@ -1,5 +1,5 @@
 ﻿/**
- * Receipt OCR Processor (Gemini 3.8 Flash Client)
+ * Receipt OCR Processor (Supports both AQ and AIza Gemini API Keys)
  */
 const OCRProcessor = {
   async processImage(file) {
@@ -10,7 +10,7 @@ const OCRProcessor = {
     }
 
     const base64Data = await this.encodeImageToBase64(file, 1600);
-    return await this.callGeminiAPI(base64Data, apiKey);
+    return await this.callGeminiAPI(base64Data, apiKey.trim());
   },
 
   async callGeminiAPI(base64Image, apiKey) {
@@ -56,47 +56,64 @@ const OCRProcessor = {
       }
     };
 
-    // APIの案内に従い gemini-3.8-flash を指定
-    const model = 'gemini-3.8-flash';
-    console.log('[OCRProcessor] Requesting Model: ' + model);
-    const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey;
+    // 最新キーで動作するエンドポイント候補
+    const models = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+    let lastError = null;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(function() { controller.abort(); }, 30000);
+    for (let i = 0; i < models.length; i++) {
+      const model = models[i];
+      try {
+        console.log('[OCRProcessor] Requesting Model: ' + model);
+        const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal
-    });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(function() { controller.abort(); }, 30000);
 
-    clearTimeout(timeoutId);
+        // x-goog-api-key ヘッダーと クエリパラメータの両方に対応
+        const response = await fetch(endpoint + '?key=' + encodeURIComponent(apiKey), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
+        });
 
-    if (!response.ok) {
-      const errData = await response.json().catch(function() { return {}; });
-      throw new Error(errData.error && errData.error.message ? errData.error.message : ('HTTP ' + response.status));
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errData = await response.json().catch(function() { return {}; });
+          throw new Error(errData.error && errData.error.message ? errData.error.message : ('HTTP ' + response.status));
+        }
+
+        const data = await response.json();
+        const candidateText = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] ? data.candidates[0].content.parts[0].text : null;
+        if (!candidateText) {
+          throw new Error('Geminiから解析テキストが得られませんでした。');
+        }
+
+        const cleanJsonStr = candidateText.replace(/^[\s\S]*?\{/, '{').replace(/\}[^}]*$/, '}').trim();
+        const result = JSON.parse(cleanJsonStr);
+
+        return {
+          date: result.date || new Date().toISOString().split('T')[0],
+          store: result.store || '不明店',
+          totalAmount: Number(result.totalAmount) || 0,
+          paymentMethod: result.paymentMethod || '現金',
+          suggestedCategory: result.suggestedCategory || '消耗品費',
+          suggestedGenre: '日用品・消耗品',
+          items: Array.isArray(result.items) ? result.items : [],
+          memo: result.memo || ''
+        };
+
+      } catch (err) {
+        console.warn('[OCRProcessor] ' + model + ' failed:', err);
+        lastError = err;
+      }
     }
 
-    const data = await response.json();
-    const candidateText = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] ? data.candidates[0].content.parts[0].text : null;
-    if (!candidateText) {
-      throw new Error('Geminiから解析テキストが得られませんでした。');
-    }
-
-    const cleanJsonStr = candidateText.replace(/^[\s\S]*?\{/, '{').replace(/\}[^}]*$/, '}').trim();
-    const result = JSON.parse(cleanJsonStr);
-
-    return {
-      date: result.date || new Date().toISOString().split('T')[0],
-      store: result.store || '不明店',
-      totalAmount: Number(result.totalAmount) || 0,
-      paymentMethod: result.paymentMethod || '現金',
-      suggestedCategory: result.suggestedCategory || '消耗品費',
-      suggestedGenre: '日用品・消耗品',
-      items: Array.isArray(result.items) ? result.items : [],
-      memo: result.memo || ''
-    };
+    throw lastError || new Error('Gemini APIへのリクエストがすべて失敗しました。');
   },
 
   encodeImageToBase64(file, maxDimension) {
