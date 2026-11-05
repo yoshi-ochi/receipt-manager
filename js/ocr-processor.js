@@ -1,55 +1,73 @@
 ﻿/**
- * Receipt OCR & Data Extraction Pipeline (Tesseract.js Client-Side Library)
- * 外部API・AIキー不要：ブラウザ内Wasmで完結するOCRエンジン
+ * Receipt OCR Processor (Google Cloud Vision API: DOCUMENT_TEXT_DETECTION)
+ * 商用レベルの精度で手書き・感熱紙・傾きレシートから品名・金額・店名を幾何学抽出
  */
 const OCRProcessor = {
-  worker: null,
-
-  async initWorker() {
-    if (!this.worker) {
-      this.worker = await Tesseract.createWorker("jpn+eng");
-    }
-    return this.worker;
-  },
-
   async processImage(file) {
-    const loaderText = document.getElementById("loader-text");
-    if (loaderText) loaderText.textContent = "OCRエンジンを初期化中...";
+    const visionKey = AppStorage.getVisionKey();
+    if (!visionKey) {
+      alert("Google Cloud Vision API キーが未設定です。\n右上の歯車アイコンからAPIキーを登録してください。");
+      throw new Error("Vision API key is not configured");
+    }
 
-    const worker = await this.initWorker();
+    // 画像のリサイズ＆Base64変換（通信容量を抑えつつ鮮明さを保持）
+    const base64Data = await this.encodeImageToBase64(file, 1600);
 
-    // 1. 画像の前処理（コントラスト調整・二値化で認識率を大幅向上）
-    if (loaderText) loaderText.textContent = "画像の前処理を実行中...";
-    const processedCanvas = await this.preprocessImage(file);
+    const url = `https://vision.googleapis.com/v1/images:annotate?key=${visionKey}`;
 
-    // 2. OCR実行（進捗表示付き）
-    if (loaderText) loaderText.textContent = "レシート文字を認識中...";
-    const { data: { text } } = await worker.recognize(processedCanvas);
+    const requestBody = {
+      requests: [
+        {
+          image: { content: base64Data },
+          features: [
+            {
+              type: "DOCUMENT_TEXT_DETECTION", // ドキュメント・領収書特化
+              maxResults: 1
+            }
+          ],
+          imageContext: {
+            languageHints: ["ja", "en"]
+          }
+        }
+      ]
+    };
 
-    console.log("=== Tesseract Raw OCR Output ===");
-    console.log(text);
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody)
+    });
 
-    // 3. ルールベースによる品目・金額・店名・科目の解析
-    return this.parseReceiptText(text);
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error?.message || `HTTP ${response.status}: Vision APIエラー`);
+    }
+
+    const result = await response.json();
+    const annotation = result.responses?.[0]?.fullTextAnnotation;
+    if (!annotation || !annotation.text) {
+      throw new Error("画像から文字を検出できませんでした。より鮮明に撮影してください。");
+    }
+
+    return this.parseVisionAnnotation(annotation);
   },
 
-  // 画像の二値化＆グレースケール変換（文字の輪郭を強調）
-  preprocessImage(file) {
+  // Base64変換
+  encodeImageToBase64(file, maxDimension) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const img = new Image();
         img.onload = () => {
-          const maxDim = 1600;
           let w = img.width;
           let h = img.height;
-          if (w > maxDim || h > maxDim) {
+          if (w > maxDimension || h > maxDimension) {
             if (w > h) {
-              h = Math.round((h * maxDim) / w);
-              w = maxDim;
+              h = Math.round((h * maxDimension) / w);
+              w = maxDimension;
             } else {
-              w = Math.round((w * maxDim) / h);
-              h = maxDim;
+              w = Math.round((w * maxDimension) / h);
+              h = maxDimension;
             }
           }
 
@@ -59,19 +77,9 @@ const OCRProcessor = {
           const ctx = canvas.getContext("2d");
           ctx.drawImage(img, 0, 0, w, h);
 
-          // コントラスト調整
-          const imgData = ctx.getImageData(0, 0, w, h);
-          const d = imgData.data;
-          for (let i = 0; i < d.length; i += 4) {
-            const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-            // ハイコントラスト二値化
-            const val = gray > 140 ? 255 : (gray < 80 ? 0 : gray);
-            d[i] = val;
-            d[i + 1] = val;
-            d[i + 2] = val;
-          }
-          ctx.putImageData(imgData, 0, 0);
-          resolve(canvas);
+          // JPEG品質0.9でエンコード
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+          resolve(dataUrl.split(",")[1]);
         };
         img.onerror = reject;
         img.src = e.target.result;
@@ -81,103 +89,105 @@ const OCRProcessor = {
     });
   },
 
-  // OCRテキストから正規表現とパターンマッチングで構造化データを抽出
-  parseReceiptText(rawText) {
-    const lines = rawText.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+  // 構造化テキストとブロック情報の解析
+  parseVisionAnnotation(annotation) {
+    const fullText = annotation.text;
+    const lines = fullText.split("\n").map(l => l.trim()).filter(l => l.length > 0);
 
     let store = "";
     let date = new Date().toISOString().split("T")[0];
     let items = [];
     let totalAmount = 0;
 
-    // 1. 日付抽出 (YYYY年MM月DD日 または YYYY/MM/DD, YYYY-MM-DD)
-    const dateRegex = /(20\d{2})[年\/\-\.](\d{1,2})[月\/\-\.](\d{1,2})/;
-    for (const line of lines) {
-      const match = line.match(dateRegex);
-      if (match) {
-        const y = match[1];
-        const m = match[2].padStart(2, "0");
-        const d = match[3].padStart(2, "0");
+    // 1. 日付抽出 (YYYY年MM月DD日 または YYYY/MM/DD, YYYY-MM-DD, 令和X年)
+    const dateMatch = fullText.match(/(20\d{2})[年\/\-\.\s](\d{1,2})[月\/\-\.\s](\d{1,2})/);
+    if (dateMatch) {
+      const y = dateMatch[1];
+      const m = dateMatch[2].padStart(2, "0");
+      const d = dateMatch[3].padStart(2, "0");
+      date = `${y}-${m}-${d}`;
+    } else {
+      // 令和対応
+      const reiwaMatch = fullText.match(/令和\s*([0-9０-９]+)年\s*([0-9０-９]+)月\s*([0-9０-９]+)日/);
+      if (reiwaMatch) {
+        const y = 2018 + parseInt(reiwaMatch[1], 10);
+        const m = reiwaMatch[2].padStart(2, "0");
+        const d = reiwaMatch[3].padStart(2, "0");
         date = `${y}-${m}-${d}`;
-        break;
       }
     }
 
-    // 2. 店舗名（上部3行の中から記号等を除去して抽出）
-    for (let i = 0; i < Math.min(4, lines.length); i++) {
+    // 2. 店舗名（上部行から「領収書」「レシート」「電話番号」「登録番号」などを除外して抽出）
+    for (let i = 0; i < Math.min(6, lines.length); i++) {
       const line = lines[i];
-      if (!line.match(/領収|レシート|No|TEL|電話|登録|20\d{2}/i) && line.length >= 2) {
+      if (!line.match(/領収|レシート|登録|TEL|電話|No|20\d{2}|合計|様|宛/i) && line.length >= 2) {
         store = line.replace(/[*#=＝\-]/g, "").trim();
         break;
       }
     }
-    if (!store) store = "レシート発行元";
+    if (!store) store = "利用店舗";
 
-    // 3. 合計金額の抽出
-    // 「合計」「小計」「支払」「税込」「お買上」等の行から数値を抽出
-    const totalKeywords = /合計|総計|小計|お買上|支払|請求|合\s*計/i;
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i];
-      if (totalKeywords.test(line)) {
-        const numMatch = line.replace(/,/g, "").match(/(\d{2,8})\s*(円|¥)?/);
+    // 3. 金額と品目の解析
+    // 行末に金額パターンがある行を抽出
+    const priceRegex = /([¥￥\\])?\s*([1-9]\d{1,6})\s*(円|※|[*])?$/;
+
+    for (const line of lines) {
+      // 合計金額の判定
+      if (line.match(/合\s*計|総\s*計|小\s*計|お買上|ご請求|お支払/i)) {
+        const numMatch = line.replace(/[,，\s]/g, "").match(/(\d{2,8})/);
         if (numMatch) {
           totalAmount = parseInt(numMatch[1], 10);
-          break;
         }
+        continue;
       }
-    }
 
-    // 4. 明細・品目行の抽出
-    // 「品名 + 価格」の行をパース
-    const priceRegex = /([¥￥])?\s*([1-9]\d{1,6})\s*(円)?$/;
-    for (const line of lines) {
-      // 合計や店舗ヘッダー、税額表示の除外
-      if (line.match(/合計|小計|お預|釣|税|消費税|対象|TEL|割引|ポイント|クレジット|現金|登録番号/)) continue;
+      // 明細除外キーワード
+      if (line.match(/消費税|内税|対象|お預|釣|割引|値引|ポイント|クレジット|現\s*金|登録番号|TEL|担当/i)) {
+        continue;
+      }
 
+      // 明細行のパース
       const cleanLine = line.replace(/[,，]/g, "");
       const match = cleanLine.match(priceRegex);
       if (match) {
         const price = parseInt(match[2], 10);
-        // 価格部分を除いた前半を品名とする
-        let itemName = cleanLine.substring(0, match.index).replace(/[*#※\-\(\)（）]/g, "").trim();
-        if (itemName.length >= 2 && price < 1000000) {
+        let itemName = cleanLine.substring(0, match.index).trim();
+        itemName = itemName.replace(/^[\-—―\s\d\*※\\]+/, "").replace(/[\-—―\\*]+$/, "").trim();
+
+        if (itemName.length >= 2 && price > 0 && price < 10000000) {
           items.push({ name: itemName, price: price });
         }
       }
     }
 
-    // 合計が拾えなかった場合、明細の合計で補完
+    // 合計が未検出で明細がある場合は合算
     if (totalAmount === 0 && items.length > 0) {
       totalAmount = items.reduce((sum, item) => sum + item.price, 0);
     }
 
-    // 品目が1件も取れなかった場合、合計行を1品目としてセット
     if (items.length === 0) {
-      items.push({ name: `${store}での利用分`, price: totalAmount });
+      items.push({ name: `${store} 利用分`, price: totalAmount });
     }
 
-    // 5. 青色申告科目＆家計簿ジャンルの自動判定（キーワード辞書）
-    const fullText = rawText.toLowerCase();
+    // 4. 青色申告科目判定
+    const lower = fullText.toLowerCase();
     let suggestedCategory = "消耗品費";
     let suggestedGenre = "日用品・消耗品";
 
-    if (/ガソリン|給油|駐車|高速|乗車|タクシー|suica|pasmo|jr|地下鉄|電車|バス/.test(fullText)) {
+    if (/ガソリン|給油|駐車|高速|交通|suica|pasmo|jr|タクシー|乗車|電車|バス/.test(lower)) {
       suggestedCategory = "旅費交通費";
       suggestedGenre = "交通費";
-    } else if (/カフェ|珈琲|コーヒー|喫茶|居酒屋|飲食|ランチ|ディナー|バー|レストラン/.test(fullText)) {
+    } else if (/飲食|カフェ|珈琲|コーヒー|居酒屋|レストラン|ランチ|ディナー|バー/.test(lower)) {
       suggestedCategory = "接待交際費";
       suggestedGenre = "外食・カフェ";
-    } else if (/スーパー|食品|生鮮|牛乳|パン|青果|精肉|弁当|米/.test(fullText)) {
+    } else if (/スーパー|食品|生鮮|精肉|鮮魚|青果|米|パン|牛乳|食料|弁当/.test(lower)) {
       suggestedCategory = "福利厚生費";
       suggestedGenre = "食料品・スーパー";
-    } else if (/本|書籍|図書|雑誌|新聞|文具|ノート|ペン|用紙/.test(fullText)) {
+    } else if (/本|書籍|文具|ノート|用紙|プリント|図書/.test(lower)) {
       suggestedCategory = "消耗品費";
       suggestedGenre = "趣味・教養・娯楽";
-    } else if (/切手|ハガキ|郵便|配送|送料|ヤマト|佐川/.test(fullText)) {
+    } else if (/切手|ハガキ|送料|配送料|ヤマト|佐川|郵便/.test(lower)) {
       suggestedCategory = "通信費";
-      suggestedGenre = "その他";
-    } else if (/修理|交換|部品|メンテナンス/.test(fullText)) {
-      suggestedCategory = "修繕費";
       suggestedGenre = "その他";
     }
 
@@ -188,7 +198,7 @@ const OCRProcessor = {
       totalAmount: totalAmount,
       suggestedCategory: suggestedCategory,
       suggestedGenre: suggestedGenre,
-      memo: `${store} (自動OCR)`
+      memo: `${store} (Cloud Vision)`
     };
   }
 };

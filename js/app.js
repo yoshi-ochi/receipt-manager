@@ -35,6 +35,7 @@
   const settingsBtnClose = document.getElementById("settings-btn-close");
   const settingsBtnSave = document.getElementById("settings-btn-save");
   const settingGasUrl = document.getElementById("setting-gas-url");
+  const settingVisionKey = document.getElementById("setting-vision-key");
   const btnExportCsv = document.getElementById("btn-export-csv");
 
   function initDropdowns() {
@@ -287,13 +288,15 @@
 
   btnSyncSettings.addEventListener("click", () => {
     settingGasUrl.value = AppStorage.getGasUrl();
+    settingVisionKey.value = AppStorage.getVisionKey();
     settingsModal.classList.remove("hidden");
   });
   settingsBtnClose.addEventListener("click", () => settingsModal.classList.add("hidden"));
   settingsBtnSave.addEventListener("click", () => {
     AppStorage.setGasUrl(settingGasUrl.value);
+    AppStorage.setVisionKey(settingVisionKey.value);
     settingsModal.classList.add("hidden");
-    alert("スプレッドシート連携URLを保存しました。");
+    alert("設定を保存しました。");
   });
 
   btnExportCsv.addEventListener("click", () => {

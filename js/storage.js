@@ -40,12 +40,12 @@
     localStorage.setItem(APP_CONFIG.STORAGE_KEYS.GAS_URL, url.trim());
   },
 
-  getGeminiKey() {
-    return localStorage.getItem(APP_CONFIG.STORAGE_KEYS.GEMINI_KEY) || "";
+  getVisionKey() {
+    return localStorage.getItem(APP_CONFIG.STORAGE_KEYS.VISION_KEY) || "";
   },
 
-  setGeminiKey(key) {
-    localStorage.setItem(APP_CONFIG.STORAGE_KEYS.GEMINI_KEY, key.trim());
+  setVisionKey(key) {
+    localStorage.setItem(APP_CONFIG.STORAGE_KEYS.VISION_KEY, key.trim());
   },
 
   async syncToGoogleSheets(record, gasUrl) {

@@ -6,8 +6,6 @@
   <title>Receipt Manager</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
-  <!-- Tesseract.js (ブラウザ完結型オープンソースOCRライブラリ) -->
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/particle-sphere.css">
   <link rel="stylesheet" href="css/skeleton.css">
@@ -33,7 +31,7 @@
     </div>
     
     <div class="flex items-center space-x-2">
-      <button id="btn-sync-settings" class="p-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition" title="スプシ連携設定">
+      <button id="btn-sync-settings" class="p-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition" title="連携・API設定">
         <i data-lucide="settings" class="w-4 h-4"></i>
       </button>
       <button id="btn-export-csv" class="p-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition" title="CSVエクスポート">
@@ -83,8 +81,8 @@
     <div class="particle-sphere-wrapper relative flex items-center justify-center">
       <canvas id="particle-sphere-canvas" width="280" height="280" class="w-[240px] h-[240px]"></canvas>
     </div>
-    <p id="loader-text" class="text-sm font-medium tracking-wide text-indigo-300 mt-4 animate-pulse">OCR解析エンジン実行中...</p>
-    <p id="loader-subtext" class="text-[11px] text-slate-500 mt-1">端末内で文字認識と品目抽出を行っています</p>
+    <p id="loader-text" class="text-sm font-medium tracking-wide text-indigo-300 mt-4 animate-pulse">Cloud Visionで高精度解析中...</p>
+    <p class="text-[11px] text-slate-500 mt-1">店名・明細・金額を精密抽出しています</p>
   </div>
 
   <!-- 確認・修正モーダル -->
@@ -168,19 +166,25 @@
     </div>
   </div>
 
-  <!-- スプシ設定モーダル -->
+  <!-- 設定モーダル（Vision API Key & GAS URL） -->
   <div id="settings-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 hidden flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl p-5 shadow-2xl">
       <h3 class="text-sm font-bold text-white mb-2 flex items-center gap-1.5">
         <i data-lucide="settings" class="w-4 h-4 text-indigo-400"></i>
-        Googleスプレッドシート連携設定
+        アプリ・連携設定
       </h3>
       <p class="text-xs text-slate-400 mb-4 leading-relaxed">
-        OCRはブラウザ内ライブラリ（Tesseract.js）で完結するため外部APIキーは不要です。スプレッドシートへの自動保存を行う場合はGAS URLを入力してください。
+        各設定値はお使いの端末のブラウザ（LocalStorage）にのみ安全に保持されます。
       </p>
       <div class="space-y-4">
         <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1">GAS Web App URL</label>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Google Cloud Vision API Key</label>
+          <input type="password" id="setting-vision-key" placeholder="AIzaSy..." class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500">
+          <p class="text-[10px] text-slate-500 mt-1">毎月1,000回まで完全無料で利用できます。</p>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">GAS Web App URL (スプレッドシート連携)</label>
           <input type="url" id="setting-gas-url" placeholder="https://script.google.com/macros/s/.../exec" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500">
         </div>
       </div>

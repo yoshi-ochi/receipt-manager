@@ -1,7 +1,4 @@
-﻿/**
- * 青色申告決算書（一般用）ラベル体系＆家計簿設定
- */
-const APP_CONFIG = {
+﻿const APP_CONFIG = {
   BLUE_TAX_COLUMNS: [
     { id: "desc", name: "摘要" },
     { id: "sales", name: "売上", type: "income" },
@@ -41,6 +38,6 @@ const APP_CONFIG = {
   STORAGE_KEYS: {
     RECORDS: "receipt_app_records_v1",
     GAS_URL: "receipt_app_gas_url_v1",
-    GEMINI_KEY: "receipt_app_gemini_key_v1"
+    VISION_KEY: "receipt_app_vision_key_v1"
   }
 };
