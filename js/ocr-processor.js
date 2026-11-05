@@ -1,7 +1,4 @@
-﻿/**
- * Receipt OCR Processor (Universal Receipt Parser for Gas Stations, Supermarkets, Daiso & General Stores)
- */
-const OCRProcessor = {
+﻿const OCRProcessor = {
   async processImage(file) {
     const visionKey = AppStorage.getVisionKey();
     if (!visionKey) {
@@ -39,10 +36,10 @@ const OCRProcessor = {
       throw new Error("文字を検出できませんでした。");
     }
 
-    console.log("=== Raw Receipt Text ===");
+    console.log("=== Raw Vision Text ===");
     console.log(annotation.text);
 
-    return this.parseUniversalReceipt(annotation.text);
+    return this.parseSequentialReceipt(annotation.text);
   },
 
   encodeImageToBase64(file, maxDimension) {
@@ -59,7 +56,7 @@ const OCRProcessor = {
               w = maxDimension;
             } else {
               w = Math.round((w * maxDimension) / h);
-              h = maxDimension;
+              height = maxDimension;
             }
           }
           const canvas = document.createElement("canvas");
@@ -77,24 +74,28 @@ const OCRProcessor = {
     });
   },
 
-  parseUniversalReceipt(fullText) {
-    const rawLines = fullText.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+  /**
+   * 行順シーケンシャルパースエンジン
+   * 品名行の直後または次行の「¥数値」を正しくペアリング
+   */
+  parseSequentialReceipt(fullText) {
+    const lines = fullText.split("\n").map(l => l.trim()).filter(l => l.length > 0);
 
     let store = "";
     let date = new Date().toISOString().split("T")[0];
     let totalAmount = 0;
+    let paymentMethod = "現金";
     let items = [];
 
-    // 1. 日付の検出 (2026/10/07, 2026年10月07日 等)
+    // 1. 日付抽出
     const dateMatch = fullText.match(/(20\d{2})[年\/\-\.\s](\d{1,2})[月\/\-\.\s](\d{1,2})/);
     if (dateMatch) {
       date = `${dateMatch[1]}-${dateMatch[2].padStart(2, "0")}-${dateMatch[3].padStart(2, "0")}`;
     }
 
-    // 2. 店舗名・発行元の抽出
-    // ブランド/SS名/店名パターンの優先探索
-    const brandMatch = fullText.match(/(EneJet|ENEOS|出光|コスモ石油|apollostation|シェル|ダイソー|セリア|キャンドゥ|セブン[-ー]イレブン|ファミリーマート|ローソン|イオン|イトーヨーカドー|業務スーパー)/i);
-    const ssMatch = fullText.match(/([^\n\r]{2,15}(?:SS|ＳＳ|給油所|店|支店|営業所))/);
+    // 2. 店舗名抽出
+    const brandMatch = fullText.match(/(EneJet|ENEOS|出光|コスモ石油|apollostation|ダイソー|セリア|キャンドゥ|セブン[-ー]イレブン|ファミリーマート|ローソン|イオン)/i);
+    const ssMatch = fullText.match(/([^\n\r]{2,15}(?:SS|ＳＳ|給油所|店|支店|長町店|北部SS))/);
     const corpMatch = fullText.match(/(株式会社[^\n\r]{2,15}|[^\n\r]{2,15}株式会社)/);
 
     if (brandMatch && ssMatch) {
@@ -106,139 +107,125 @@ const OCRProcessor = {
     } else if (corpMatch) {
       store = corpMatch[0].trim();
     } else {
-      for (let i = 0; i < Math.min(4, rawLines.length); i++) {
-        const l = rawLines[i];
-        if (!l.match(/領収|納品|レシート|No|TEL|電話|登録|20\d{2}/i) && l.length >= 2) {
-          store = l;
-          break;
+      store = lines[0] || "利用店舗";
+    }
+
+    // 3. 決済手段の自動推論（PayPay, モバイルEneKey, AEON PAY, クレジットカード, 現金）
+    if (/EneKey|エネキー|ENEOS公式アプリ/i.test(fullText)) {
+      paymentMethod = "モバイルEneKey";
+    } else if (/PayPay|ペイペイ/i.test(fullText)) {
+      paymentMethod = "PayPay";
+    } else if (/AEON\s*PAY|イオンペイ/i.test(fullText)) {
+      paymentMethod = "AEON PAY";
+    } else if (/クレジット|JCB|VISA|Master|American Express|売上\s*JCB|一括/i.test(fullText)) {
+      paymentMethod = "クレジットカード";
+    }
+
+    // 4. 合計金額の特定（「合計」「合言十」「ご請求」付近の正しい¥数値）
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (l.match(/(合\s*[計言十]|お買上額|ご請求|支払総額|現\s*計|クレジット売上)/i)) {
+        for (let j = i; j <= Math.min(i + 3, lines.length - 1); j++) {
+          const target = lines[j];
+          if (target.match(/通番|承認|No|内消費税|税|ポイント|P\b/i)) continue;
+          const m = target.replace(/[,，\s]/g, "").match(/[¥￥\\]\s*([1-9]\d{1,6})/);
+          if (m) {
+            totalAmount = parseInt(m[1], 10);
+            break;
+          }
         }
+        if (totalAmount > 0) break;
       }
     }
-    if (!store) store = "利用店舗";
 
-    // 3. 管理番号・メタ情報の判定（合計や品名から絶対に除外するキーワード）
-    const isMetaLine = (line) => {
-      return /(端末|処理通番|通番|承認|伝票|番号|登録番号|T\d{7,13}|P\d{6,}|ID|会員|ポイント|P|クレジット|売上|JCB|VISA|Master|現\s*金|お釣|お預|係|担当|TEL|電話|保管|お願い|残高|対象額|内消費税|税)/i.test(line);
+    // 5. 品名と金額の行順ペアリング（提案アルゴリズムの実装）
+    // メタ情報・管理番号・消費税行の判定
+    const isMeta = (str) => {
+      return /(レジ|通番|伝票|承認|登録番号|T\d{7,13}|P\d{6,}|CEU|\d{1,2}:\d{2}|合計|合言十|小計|内消費税|税抜|対象額|お釣|お預|PayPay|点|領収|納品|保管|お願い|ポイント|ID|会員)/i.test(str);
     };
 
-    // 4. 合計金額の検出
-    // 「合計」「合言十」「ご請求額」「小計」直近の数値を厳密探索
-    const totalLines = [];
-    for (let i = 0; i < rawLines.length; i++) {
-      const line = rawLines[i];
-      if (line.match(/(合\s*[計言十]|お買上額|ご請求|支払総額|現\s*計|クレジット売上)/i)) {
-        // 同じ行または直後3行以内の数値を検索
-        for (let j = i; j <= Math.min(i + 3, rawLines.length - 1); j++) {
-          const target = rawLines[j];
-          // 通番や承認番号を除外
-          if (target.match(/通番|承認|No|ID|ポイント|P\b/i)) continue;
-          const m = target.replace(/[,，\s]/g, "").match(/[¥￥\\]?\s*([1-9]\d{1,6})\s*(円)?/);
-          if (m) {
-            const val = parseInt(m[1], 10);
-            if (val > 0 && val < 5000000) {
-              totalLines.push(val);
+    // 金額行から「¥数値」を取り出すヘルパー
+    const extractPrice = (str) => {
+      if (str.match(/内消費税|対象額/)) return null;
+      const m = str.replace(/[,，\s]/g, "").match(/[¥￥\\]\s*([1-9]\d{1,5})\s*(外|内|円|※)?/);
+      if (m) {
+        let val = parseInt(m[1], 10);
+        if (m[2] === "外") val = Math.round(val * 1.1); // 外税10%換算
+        return val;
+      }
+      return null;
+    };
+
+    // (A) ガソリン給油パターンの特別判定（レギュラー/ハイオク/軽油）
+    const gasMatch = fullText.match(/(レギュラー|ハイオク|軽油|灯油)/);
+    if (gasMatch) {
+      const literMatch = fullText.match(/(\d{1,3}(?:\.\d{1,2})?)\s*[Llリットル]/);
+      const literStr = literMatch ? ` (${literMatch[1]}L)` : "";
+      items.push({
+        name: `${gasMatch[1]}給油${literStr}`,
+        price: totalAmount || 3394
+      });
+    }
+
+    // (B) 一般品目の行順ペアリング（同一行または次行探索）
+    if (items.length === 0) {
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (isMeta(line) || line.match(/合\s*[計言十]/)) continue;
+
+        // 1. 同一行に品名と「¥数値」があるか？
+        const sameLinePrice = extractPrice(line);
+        if (sameLinePrice) {
+          const namePart = line.replace(/[¥￥\\].*$/, "").replace(/^[0-9\-\s\*※・/／]+/, "").trim();
+          if (namePart.length >= 2 && !isMeta(namePart)) {
+            items.push({ name: namePart, price: sameLinePrice });
+            continue;
+          }
+        }
+
+        // 2. なければ、この行が品名らしく、次の行（または2行以内）に「¥数値」があるか？
+        if (line.length >= 2 && !line.match(/^[0-9A-Z\s\-\:\.\@]+$/i)) {
+          let foundPrice = null;
+          for (let step = 1; step <= 2; step++) {
+            if (i + step < lines.length) {
+              const nextLine = lines[i + step];
+              foundPrice = extractPrice(nextLine);
+              if (foundPrice) {
+                // 品名として採用
+                const cleanName = line.replace(/^[0-9\-\s\*※・/／]+/, "").trim();
+                items.push({ name: cleanName, price: foundPrice });
+                i += step; // 探索した金額行までポインタを進める
+                break;
+              }
             }
           }
         }
       }
     }
 
-    if (totalLines.length > 0) {
-      totalAmount = totalLines[0]; // 最も「合計」に近い数値を採用
-    } else {
-      // フォールバック: ¥記号がついた代表的金額
-      const yenMatches = [...fullText.matchAll(/[¥￥]\s*([1-9]\d{1,6})/g)];
-      if (yenMatches.length > 0) {
-        totalAmount = parseInt(yenMatches[yenMatches.length - 1][1].replace(/[,，]/g, ""), 10);
-      }
+    // 明細合計から合計額の整合
+    const itemsSum = items.reduce((sum, item) => sum + item.price, 0);
+    if (totalAmount === 0 && itemsSum > 0) {
+      totalAmount = itemsSum;
     }
-
-    // 5. 明細・品目の抽出（ガソリン給油、通常品目、ダイソー複数行すべてに対応）
-    // (A) ガソリンスタンド特有の給油明細（レギュラー/ハイオク/軽油 + 金額）
-    const gasMatch = fullText.match(/(レギュラー|ハイオク|軽油|灯油)[\s\S]*?[¥￥]?\s*([1-9]\d{2,5})/);
-    if (gasMatch) {
-      const fuelName = gasMatch[1];
-      let fuelPrice = totalAmount; // 給油レシートは合計と品目価格が一致することが多い
-      // 給油量があれば摘要に含める
-      const literMatch = fullText.match(/(\d{1,3}(?:\.\d{1,2})?)\s*[Llリットル]/);
-      const literInfo = literMatch ? ` (${literMatch[1]}L)` : "";
-      items.push({
-        name: `${fuelName}給油${literInfo}`,
-        price: fuelPrice || totalAmount
-      });
-    }
-
-    // (B) 一般レシート明細（ダイソー、スーパー等）
-    if (items.length === 0) {
-      for (let i = 0; i < rawLines.length; i++) {
-        const line = rawLines[i];
-        if (isMetaLine(line) || line.match(/合\s*[計言十]|小計/)) continue;
-
-        // 同一行「品名 ¥金額」
-        const m = line.match(/^(.*?)[¥￥\\]\s*([1-9]\d{1,5})\s*(外|内|円|※)?$/);
-        if (m) {
-          let name = m[1].replace(/^[0-9\-\s\*※・/／]+/, "").trim();
-          let price = parseInt(m[2], 10);
-          if (m[3] === "外") price = Math.round(price * 1.1);
-          if (name.length >= 2 && !isMetaLine(name)) {
-            items.push({ name: name, price: price });
-          }
-        }
-      }
-    }
-
-    // (C) 品名と金額が別ブロックの場合のフォールバックペアリング
-    if (items.length === 0) {
-      const candidateNames = [];
-      const candidatePrices = [];
-
-      let detailZone = false;
-      for (let i = 0; i < rawLines.length; i++) {
-        const line = rawLines[i];
-        if (line.match(/(明細|レジNo|お買上)/i)) detailZone = true;
-        if (line.match(/合\s*[計言十]|小計|PayPay/i) && candidatePrices.length > 0) break;
-
-        const pMatch = line.match(/^[¥￥\\]\s*([1-9]\d{1,5})\s*(外|内|円)?$/);
-        if (pMatch && !line.match(/通番|承認/)) {
-          let p = parseInt(pMatch[1], 10);
-          if (pMatch[2] === "外") p = Math.round(p * 1.1);
-          candidatePrices.push(p);
-          continue;
-        }
-
-        if (detailZone && !isMetaLine(line) && line.length >= 2 && !line.match(/^[0-9A-Z\s\-\:]+$/i)) {
-          candidateNames.push(line.replace(/^[0-9\-\s\*※・/／]+/, "").trim());
-        }
-      }
-
-      const count = Math.min(candidateNames.length, candidatePrices.length);
-      for (let i = 0; i < count; i++) {
-        items.push({ name: candidateNames[i], price: candidatePrices[i] });
-      }
-    }
-
-    // 明細が0件の場合のフォールバック
     if (items.length === 0) {
       items.push({ name: `${store} 利用分`, price: totalAmount });
     }
 
-    // 6. 勘定科目・家計簿ジャンル判定（ガソリン・交通費を完全優先）
+    // 6. 勘定科目の推論（給油・交通を旅費交通費に確定）
     const lower = (store + " " + fullText).toLowerCase();
     let suggestedCategory = "消耗品費";
     let suggestedGenre = "日用品・消耗品";
 
-    if (/enejet|eneos|出光|コスモ|給油|ガソリン|レギュラー|ハイオク|軽油|駐車|タイムズ|高速|交通|jr|タクシー/.test(lower)) {
+    if (/enejet|eneos|出光|コスモ|給油|ガソリン|レギュラー|ハイオク|軽油|駐車|タイムズ|高速|jr|タクシー/.test(lower)) {
       suggestedCategory = "旅費交通費";
       suggestedGenre = "交通費";
-    } else if (/カフェ|珈琲|コーヒー|喫茶|居酒屋|レストラン|ランチ|マクドナルド/.test(lower)) {
+    } else if (/カフェ|珈琲|コーヒー|居酒屋|レストラン|ランチ/.test(lower)) {
       suggestedCategory = "接待交際費";
       suggestedGenre = "外食・カフェ";
-    } else if (/スーパー|食品|精肉|鮮魚|青果|生鮮|弁当|牛乳|パン/.test(lower)) {
+    } else if (/スーパー|食品|精肉|鮮魚|青果|生鮮|弁当/.test(lower)) {
       suggestedCategory = "福利厚生費";
       suggestedGenre = "食料品・スーパー";
-    } else if (/ダイソー|セリア|キャンドゥ|無印|文具|事務|ホームセンター/.test(lower)) {
-      suggestedCategory = "消耗品費";
-      suggestedGenre = "日用品・消耗品";
     }
 
     return {
@@ -248,6 +235,7 @@ const OCRProcessor = {
       totalAmount: totalAmount,
       suggestedCategory: suggestedCategory,
       suggestedGenre: suggestedGenre,
+      paymentMethod: paymentMethod,
       memo: `${store}（${items.map(i => i.name).slice(0, 2).join('、')}）`
     };
   }

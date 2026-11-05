@@ -26,7 +26,7 @@
       </div>
       <div>
         <h1 class="text-sm font-bold tracking-tight text-white leading-none">Receipt Manager</h1>
-        <p class="text-[10px] text-slate-400 mt-0.5">青色申告 ＆ 家計簿スプシ連携</p>
+        <p class="text-[10px] text-slate-400 mt-0.5">青色申告（仕訳帳・元帳・出納帳）自動化</p>
       </div>
     </div>
     
@@ -43,11 +43,11 @@
     </div>
   </header>
 
-  <!-- タブ切替（事業用 / 個人用） -->
+  <!-- タブ切替 -->
   <div class="px-4 pt-3">
     <div class="grid grid-cols-2 p-1 bg-slate-900 rounded-xl border border-slate-800">
       <button id="tab-business" class="py-2 text-xs font-semibold rounded-lg transition-all duration-200 bg-indigo-600 text-white shadow-md">
-        事業用 (青色申告決算)
+        事業用 (複式簿記 3帳簿)
       </button>
       <button id="tab-personal" class="py-2 text-xs font-semibold rounded-lg transition-all duration-200 text-slate-400 hover:text-slate-200">
         個人用 (家計簿)
@@ -55,49 +55,32 @@
     </div>
   </div>
 
-  <!-- 集計フィルターバー（総額 / 月別 / 週別 / 店舗別 / 勘定科目別） -->
+  <!-- 集計フィルターバー -->
   <div class="px-4 pt-3 overflow-x-auto scrollbar-none flex gap-1.5 text-xs">
-    <button class="analytics-filter-btn px-3 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-indigo-500/20 text-indigo-300 border border-indigo-500/40" data-filter="all">
-      総額
-    </button>
-    <button class="analytics-filter-btn px-3 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-slate-900 text-slate-400 border border-slate-800" data-filter="month">
-      月別
-    </button>
-    <button class="analytics-filter-btn px-3 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-slate-900 text-slate-400 border border-slate-800" data-filter="week">
-      週別
-    </button>
-    <button class="analytics-filter-btn px-3 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-slate-900 text-slate-400 border border-slate-800" data-filter="store">
-      店舗別
-    </button>
-    <button class="analytics-filter-btn px-3 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-slate-900 text-slate-400 border border-slate-800" data-filter="category">
-      科目・ジャンル別
-    </button>
+    <button class="analytics-filter-btn px-3 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-indigo-500/20 text-indigo-300 border border-indigo-500/40" data-filter="all">総額</button>
+    <button class="analytics-filter-btn px-3 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-slate-900 text-slate-400 border border-slate-800" data-filter="month">月別</button>
+    <button class="analytics-filter-btn px-3 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-slate-900 text-slate-400 border border-slate-800" data-filter="week">週別</button>
+    <button class="analytics-filter-btn px-3 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-slate-900 text-slate-400 border border-slate-800" data-filter="store">店舗別</button>
+    <button class="analytics-filter-btn px-3 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-slate-900 text-slate-400 border border-slate-800" data-filter="category">勘定科目別</button>
   </div>
 
   <!-- メインコンテンツ -->
   <main class="px-4 py-3 max-w-lg mx-auto">
-    <!-- サマリーカード -->
     <section id="summary-container" class="mb-4"></section>
-
-    <!-- 集計ダッシュボード（フィルター選択時に展開） -->
     <section id="analytics-breakdown-container" class="mb-4 space-y-2 hidden"></section>
-
-    <!-- Skeleton Shimmer Placeholder -->
     <section id="skeleton-container" class="hidden space-y-3">
       <div class="skeleton-shimmer h-24 rounded-2xl"></div>
       <div class="skeleton-shimmer h-16 rounded-xl"></div>
-      <div class="skeleton-shimmer h-16 rounded-xl"></div>
     </section>
 
-    <!-- 履歴リスト -->
     <div class="flex items-center justify-between mb-2">
-      <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">明細履歴</h3>
+      <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">仕訳帳 明細一覧</h3>
       <span id="record-count-badge" class="text-[10px] text-slate-500 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">0件</span>
     </div>
     <section id="records-container" class="space-y-2.5"></section>
   </main>
 
-  <!-- レシート撮影ボタン -->
+  <!-- 撮影ボタン -->
   <div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent pointer-events-none z-20 flex justify-center">
     <label for="camera-input" class="pointer-events-auto flex items-center justify-center space-x-2 bg-gradient-to-r from-indigo-500 to-cyan-500 hover:from-indigo-600 hover:to-cyan-600 text-white font-bold py-3.5 px-7 rounded-full shadow-xl shadow-indigo-500/25 active:scale-95 transition cursor-pointer">
       <i data-lucide="camera" class="w-5 h-5"></i>
@@ -106,13 +89,13 @@
     <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden">
   </div>
 
-  <!-- Particle Sphere ローディング画面 -->
+  <!-- Particle Sphere ローディング -->
   <div id="loader-overlay" class="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-50 flex flex-col items-center justify-center hidden">
     <div class="particle-sphere-wrapper relative flex items-center justify-center">
       <canvas id="particle-sphere-canvas" width="280" height="280" class="w-[240px] h-[240px]"></canvas>
     </div>
-    <p id="loader-text" class="text-sm font-medium tracking-wide text-indigo-300 mt-4 animate-pulse">データを読み込み中...</p>
-    <p class="text-[11px] text-slate-500 mt-1">スプレッドシートやOCRデータを処理しています</p>
+    <p id="loader-text" class="text-sm font-medium tracking-wide text-indigo-300 mt-4 animate-pulse">レシートを解析中...</p>
+    <p class="text-[11px] text-slate-500 mt-1">行ごとの品名と金額を自動抽出しています</p>
   </div>
 
   <!-- 確認・修正モーダル -->
@@ -124,7 +107,7 @@
             <i data-lucide="receipt" class="w-4 h-4 text-indigo-400"></i>
             レシート確認・仕訳修正
           </h2>
-          <p class="text-xs text-slate-400 mt-0.5" id="modal-mode-subtitle">青色申告決算科目への割り当て</p>
+          <p class="text-xs text-slate-400 mt-0.5" id="modal-mode-subtitle">3帳簿（仕訳帳・元帳・出納帳）への自動展開</p>
         </div>
         <button id="modal-btn-close" class="p-1 rounded-lg text-slate-400 hover:text-white">
           <i data-lucide="x" class="w-5 h-5"></i>
@@ -134,7 +117,7 @@
       <div class="p-5 overflow-y-auto space-y-4 text-sm">
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-semibold text-slate-400 mb-1">日付</label>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">取引日</label>
             <input type="date" id="form-date" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div>
@@ -143,9 +126,21 @@
           </div>
         </div>
 
-        <div id="business-category-group">
-          <label class="block text-xs font-semibold text-indigo-400 mb-1">勘定科目（青色申告決算書ラベル）</label>
-          <select id="form-business-category" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500"></select>
+        <div class="grid grid-cols-2 gap-3">
+          <div id="business-category-group">
+            <label class="block text-xs font-semibold text-indigo-400 mb-1">借方科目（費用）</label>
+            <select id="form-business-category" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500"></select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-emerald-400 mb-1">決済手段（貸方科目）</label>
+            <select id="form-payment-method" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:ring-2 focus:ring-emerald-500">
+              <option value="現金">現金（出納帳連動）</option>
+              <option value="クレジットカード">クレジットカード（未払金）</option>
+              <option value="PayPay">PayPay</option>
+              <option value="AEON PAY">AEON PAY</option>
+              <option value="モバイルEneKey">モバイルEneKey</option>
+            </select>
+          </div>
         </div>
 
         <div id="personal-genre-group" class="hidden">
@@ -155,7 +150,7 @@
 
         <div>
           <div class="flex items-center justify-between mb-1.5">
-            <label class="text-xs font-semibold text-slate-400">購入物・明細リスト</label>
+            <label class="text-xs font-semibold text-slate-400">購入品・明細リスト</label>
             <button type="button" id="btn-add-item-row" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
               <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> 行を追加
             </button>
@@ -175,13 +170,13 @@
         </div>
 
         <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700/80 flex items-center justify-between">
-          <span class="text-xs text-slate-300 font-medium">合計金額</span>
+          <span class="text-xs text-slate-300 font-medium">合計支払金額</span>
           <span id="form-total-display" class="text-lg font-bold text-white tracking-tight">¥0</span>
         </div>
 
         <div>
           <label class="block text-xs font-semibold text-slate-400 mb-1">摘要 / メモ</label>
-          <input type="text" id="form-memo" placeholder="用件や按分メモなど" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500">
+          <input type="text" id="form-memo" placeholder="事業利用メモ" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500">
         </div>
       </div>
 
@@ -190,28 +185,23 @@
           キャンセル
         </button>
         <button id="modal-btn-save" class="flex-1 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-1.5">
-          <i data-lucide="check" class="w-4 h-4"></i> 保存してスプシに記録
+          <i data-lucide="check" class="w-4 h-4"></i> 3帳簿へ保存・記帳
         </button>
       </div>
     </div>
   </div>
 
-  <!-- 設定モーダル（Vision API Key & GAS URL） -->
+  <!-- 設定モーダル -->
   <div id="settings-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 hidden flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl p-5 shadow-2xl">
       <h3 class="text-sm font-bold text-white mb-2 flex items-center gap-1.5">
-        <i data-lucide="settings" class="w-4 h-4 text-indigo-400"></i>
-        アプリ・連携設定
+        <i data-lucide="settings" class="w-4 h-4 text-indigo-400"></i> アプリ・連携設定
       </h3>
-      <p class="text-xs text-slate-400 mb-4 leading-relaxed">
-        各設定値はお使いの端末のブラウザ（LocalStorage）にのみ安全に保持されます。
-      </p>
       <div class="space-y-4">
         <div>
           <label class="block text-xs font-semibold text-slate-300 mb-1">Google Cloud Vision API Key</label>
           <input type="password" id="setting-vision-key" placeholder="AIzaSy..." class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500">
         </div>
-
         <div>
           <label class="block text-xs font-semibold text-slate-300 mb-1">GAS Web App URL (スプレッドシート連携)</label>
           <input type="url" id="setting-gas-url" placeholder="https://script.google.com/macros/s/.../exec" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500">
