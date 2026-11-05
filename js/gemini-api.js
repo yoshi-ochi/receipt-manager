@@ -48,7 +48,6 @@ const GeminiClient = {
       }
     };
 
-    // 最も安定しているモデルを優先して試行
     const models = ["gemini-1.5-flash", "gemini-1.5-pro"];
     let lastError = null;
 
@@ -58,7 +57,7 @@ const GeminiClient = {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 25000); // 25秒タイムアウト
+        const timeout = setTimeout(() => controller.abort(), 25000);
 
         const response = await fetch(url, {
           method: "POST",
@@ -80,7 +79,6 @@ const GeminiClient = {
           throw new Error("Geminiから解析テキストが得られませんでした。");
         }
 
-        // Markdownブロックのバッククォートが含まれている場合のクリーンアップ
         const cleanJsonStr = candidateText.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/```$/, "").trim();
         const parsed = JSON.parse(cleanJsonStr);
         console.log(`[GeminiClient] Success with ${model}:`, parsed);
@@ -95,4 +93,6 @@ const GeminiClient = {
     throw lastError || new Error("Gemini APIへのリクエストがすべて失敗しました。");
   }
 };
+
+// グローバルスコープへ明示的に代入
 window.GeminiClient = GeminiClient;
