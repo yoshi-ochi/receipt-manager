@@ -11,7 +11,6 @@
   const summaryContainer = document.getElementById("summary-container");
   const analyticsBreakdown = document.getElementById("analytics-breakdown-container");
   const recordCountBadge = document.getElementById("record-count-badge");
-  const skeletonContainer = document.getElementById("skeleton-container");
 
   const loaderOverlay = document.getElementById("loader-overlay");
   const cameraInput = document.getElementById("camera-input");
@@ -28,7 +27,6 @@
   const itemsTableBody = document.getElementById("items-table-body");
   const btnAddItemRow = document.getElementById("btn-add-item-row");
 
-  const businessCategoryGroup = document.getElementById("business-category-group");
   const formBusinessCategory = document.getElementById("form-business-category");
   const formPaymentMethod = document.getElementById("form-payment-method");
 
@@ -63,17 +61,30 @@
     renderAllViews();
   }
 
+  // 日付の正規化ヘルパー（Wed Oct 07 2026... を 2026-10-07 に成型）
+  function formatDisplayDate(rawDate) {
+    if (!rawDate) return "日付不明";
+    const d = new Date(rawDate);
+    if (!isNaN(d.getTime())) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    }
+    return String(rawDate).substring(0, 10);
+  }
+
   function renderAllViews() {
     const allRecords = AppStorage.getAll().filter(r => r.mode === currentMode);
     const totalAmount = allRecords.reduce((sum, r) => sum + Number(r.total || 0), 0);
     recordCountBadge.textContent = `${allRecords.length}件`;
 
     summaryContainer.innerHTML = `
-      <div class="bg-gradient-to-br ${currentMode === 'business' ? 'from-indigo-900/40 via-slate-900 to-slate-900 border-indigo-500/30' : 'from-cyan-900/40 via-slate-900 to-slate-900 border-cyan-500/30'} border rounded-2xl p-4 shadow-xl">
+      <div class="bg-gradient-to-br from-indigo-900/40 via-slate-900 to-slate-900 border border-indigo-500/30 rounded-2xl p-4 shadow-xl">
         <div class="flex justify-between items-start">
           <div>
-            <p class="text-[11px] font-medium tracking-wide uppercase ${currentMode === 'business' ? 'text-indigo-400' : 'text-cyan-400'}">
-              ${currentMode === 'business' ? '青色申告 対象総支出 (3帳簿連動)' : '家計簿 総支出'}
+            <p class="text-[11px] font-medium tracking-wide uppercase text-indigo-400">
+              青色申告 対象総支出 (3帳簿連動)
             </p>
             <h2 class="text-2xl font-black text-white mt-1">¥${totalAmount.toLocaleString()}</h2>
           </div>
@@ -96,7 +107,6 @@
         <div class="text-center py-12 px-4 border border-dashed border-slate-800 rounded-2xl bg-slate-900/40">
           <i data-lucide="receipt" class="w-10 h-10 text-slate-600 mx-auto mb-2"></i>
           <p class="text-sm font-semibold text-slate-400">仕訳データがありません</p>
-          <p class="text-xs text-slate-500 mt-1">レシートを撮影すると仕訳帳・元帳・出納帳へ自動展開されます</p>
         </div>
       `;
       lucide.createIcons();
@@ -104,6 +114,11 @@
     }
 
     recordsContainer.innerHTML = allRecords.map(r => {
+      const cleanDate = formatDisplayDate(r.date);
+      // 余計な二重店舗名があればクリーンアップして表示
+      let displayMemo = (r.memo || "").replace(new RegExp(`^${r.store}\\s*`, "i"), "").trim();
+      if (!displayMemo) displayMemo = "内訳なし";
+
       return `
         <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 hover:border-slate-700 transition">
           <div class="flex items-start justify-between">
@@ -117,8 +132,8 @@
                   ${r.paymentMethod || '現金'}
                 </span>
               </div>
-              <p class="text-[11px] text-slate-300 font-medium mt-1 truncate">${r.memo || '内訳なし'}</p>
-              <div class="text-[10px] text-slate-500 mt-1.5">${r.date}</div>
+              <p class="text-[11px] text-slate-300 font-medium mt-1 truncate">${displayMemo}</p>
+              <div class="text-[10px] text-slate-500 mt-1.5">${cleanDate}</div>
             </div>
             <div class="text-right flex flex-col justify-between items-end">
               <span class="text-base font-bold text-white tracking-tight">¥${Number(r.total).toLocaleString()}</span>
@@ -148,10 +163,11 @@
     const grouped = {};
     records.forEach(r => {
       let key = "その他";
+      const cleanDate = formatDisplayDate(r.date);
       if (currentFilter === "month") {
-        key = r.date ? r.date.substring(0, 7) + "月" : "日付不明";
+        key = cleanDate.substring(0, 7) + "月";
       } else if (currentFilter === "week") {
-        const d = new Date(r.date);
+        const d = new Date(cleanDate);
         const onejan = new Date(d.getFullYear(), 0, 1);
         const week = Math.ceil((((d - onejan) / 86400000) + onejan.getDay() + 1) / 7);
         key = `${d.getFullYear()}年 第${week}週`;
@@ -229,7 +245,7 @@
 
     loaderOverlay.classList.remove("hidden");
     particleSphere.start();
-    document.getElementById("loader-text").textContent = "レシート文字を解析中...";
+    document.getElementById("loader-text").textContent = "Gemini AIで解析中...";
 
     try {
       const extracted = await OCRProcessor.processImage(file);
@@ -246,13 +262,12 @@
   });
 
   function openEditModal(data) {
-    formDate.value = data.date || new Date().toISOString().split('T')[0];
+    formDate.value = formatDisplayDate(data.date);
     formStore.value = data.store || "";
     formMemo.value = data.memo || "";
     formPaymentMethod.value = data.paymentMethod || "現金";
     formBusinessCategory.value = data.suggestedCategory || "消耗品費";
 
-    // OCRで決定した合計金額を固定値として保持
     confirmedTotalAmount = Number(data.totalAmount || 0);
     currentWorkingItems = data.items ? [...data.items] : [];
 
