@@ -1,5 +1,5 @@
 ﻿/**
- * Receipt OCR Processor (Google Cloud Vision API 2D座標クラスタリング対応版)
+ * Receipt OCR Processor (Universal Receipt Parser for Gas Stations, Supermarkets, Daiso & General Stores)
  */
 const OCRProcessor = {
   async processImage(file) {
@@ -34,12 +34,15 @@ const OCRProcessor = {
     }
 
     const result = await response.json();
-    const resData = result.responses?.[0];
-    if (!resData || !resData.fullTextAnnotation) {
+    const annotation = result.responses?.[0]?.fullTextAnnotation;
+    if (!annotation || !annotation.text) {
       throw new Error("文字を検出できませんでした。");
     }
 
-    return this.parseVisionResponse(resData);
+    console.log("=== Raw Receipt Text ===");
+    console.log(annotation.text);
+
+    return this.parseUniversalReceipt(annotation.text);
   },
 
   encodeImageToBase64(file, maxDimension) {
@@ -74,101 +77,168 @@ const OCRProcessor = {
     });
   },
 
-  parseVisionResponse(resData) {
-    const fullText = resData.fullTextAnnotation.text || "";
-    const lines = fullText.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+  parseUniversalReceipt(fullText) {
+    const rawLines = fullText.split("\n").map(l => l.trim()).filter(l => l.length > 0);
 
     let store = "";
     let date = new Date().toISOString().split("T")[0];
     let totalAmount = 0;
     let items = [];
 
-    // 1. 日付の検出 (YYYY年MM月DD日)
+    // 1. 日付の検出 (2026/10/07, 2026年10月07日 等)
     const dateMatch = fullText.match(/(20\d{2})[年\/\-\.\s](\d{1,2})[月\/\-\.\s](\d{1,2})/);
     if (dateMatch) {
       date = `${dateMatch[1]}-${dateMatch[2].padStart(2, "0")}-${dateMatch[3].padStart(2, "0")}`;
     }
 
-    // 2. 店舗名（「○○店」が付いている行を最優先）
-    const branchMatch = fullText.match(/([^\n\r]{2,15}(?:店|支店|営業所))/);
-    if (branchMatch && !branchMatch[0].match(/登録|TEL|電話|No/i)) {
-      store = branchMatch[0].replace(/[!！\*#=＝\-_]/g, "").trim();
-    } else if (fullText.includes("ダイソー") || fullText.includes("DAISO")) {
-      store = "ダイソー仙台長町店";
+    // 2. 店舗名・発行元の抽出
+    // ブランド/SS名/店名パターンの優先探索
+    const brandMatch = fullText.match(/(EneJet|ENEOS|出光|コスモ石油|apollostation|シェル|ダイソー|セリア|キャンドゥ|セブン[-ー]イレブン|ファミリーマート|ローソン|イオン|イトーヨーカドー|業務スーパー)/i);
+    const ssMatch = fullText.match(/([^\n\r]{2,15}(?:SS|ＳＳ|給油所|店|支店|営業所))/);
+    const corpMatch = fullText.match(/(株式会社[^\n\r]{2,15}|[^\n\r]{2,15}株式会社)/);
+
+    if (brandMatch && ssMatch) {
+      store = `${brandMatch[0]} ${ssMatch[1].replace(/[!！\*#=＝\-_]/g, "").trim()}`;
+    } else if (ssMatch) {
+      store = ssMatch[1].replace(/[!！\*#=＝\-_]/g, "").trim();
+    } else if (brandMatch) {
+      store = brandMatch[0];
+    } else if (corpMatch) {
+      store = corpMatch[0].trim();
     } else {
-      store = lines[0] || "利用店舗";
-    }
-
-    // 3. 合計金額の検出（レシート下部の「合計 ¥440」「PayPay ¥440」等から厳密取得）
-    const totalPatterns = [
-      /合\s*[計言十][^\d¥￥]*[¥￥\\]?\s*(\d{2,7})/i,
-      /PayPay[^\d¥￥]*[¥￥\\]?\s*(\d{2,7})/i,
-      /ご利用金額[^\d¥￥]*[¥￥\\]?\s*(\d{2,7})/i,
-      /お買上額[^\d¥￥]*[¥￥\\]?\s*(\d{2,7})/i
-    ];
-    for (const pat of totalPatterns) {
-      const m = fullText.match(pat);
-      if (m) {
-        totalAmount = parseInt(m[1], 10);
-        break;
-      }
-    }
-
-    // 4. 明細商品の抽出（品名と単価の厳密抽出）
-    // ダイソー等のレシートは「商品名」と「¥数値外」のペア
-    const rawItems = [];
-    const rawPrices = [];
-
-    let inDetailZone = false;
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-
-      if (line.includes("領収証明細") || line.includes("レジNo")) {
-        inDetailZone = true;
-        continue;
-      }
-      if (line.match(/^(合\s*[計言十]|小計|10%|PayPay|お釣)/)) {
-        if (rawPrices.length >= 3) inDetailZone = false;
-      }
-
-      // 単価行の判定: 「¥100外」「¥200外」などの「外」または「内」が付いた行を優先
-      const priceMatch = line.match(/^[¥￥\\]\s*([1-9]\d{1,5})\s*(外|内|※)?$/);
-      if (priceMatch) {
-        // 小計（例: ¥400）は「外」が付かないため、明細単価から除外
-        const hasTaxSuffix = priceMatch[2] === "外" || priceMatch[2] === "内";
-        const priceVal = parseInt(priceMatch[1], 10);
-
-        if (hasTaxSuffix) {
-          const finalPrice = priceMatch[2] === "外" ? Math.round(priceVal * 1.1) : priceVal;
-          rawPrices.push(finalPrice);
+      for (let i = 0; i < Math.min(4, rawLines.length); i++) {
+        const l = rawLines[i];
+        if (!l.match(/領収|納品|レシート|No|TEL|電話|登録|20\d{2}/i) && l.length >= 2) {
+          store = l;
+          break;
         }
-        continue;
       }
+    }
+    if (!store) store = "利用店舗";
 
-      // 品名行の判定: メタ情報や点数・記号を除外
-      const isMeta = /(レシート|レジ|担当|TEL|登録|T\d|P\d|CEU|\d{1,2}:\d{2}|合計|小計|税|預|釣|PayPay|点|領収|%|％|小計)/i.test(line);
-      if (inDetailZone && !isMeta && line.length >= 2 && !line.match(/^[0-9A-Z\s\-\:]+$/i)) {
-        rawItems.push(line.replace(/^[0-9\-\s\*※・/／]+/, "").trim());
+    // 3. 管理番号・メタ情報の判定（合計や品名から絶対に除外するキーワード）
+    const isMetaLine = (line) => {
+      return /(端末|処理通番|通番|承認|伝票|番号|登録番号|T\d{7,13}|P\d{6,}|ID|会員|ポイント|P|クレジット|売上|JCB|VISA|Master|現\s*金|お釣|お預|係|担当|TEL|電話|保管|お願い|残高|対象額|内消費税|税)/i.test(line);
+    };
+
+    // 4. 合計金額の検出
+    // 「合計」「合言十」「ご請求額」「小計」直近の数値を厳密探索
+    const totalLines = [];
+    for (let i = 0; i < rawLines.length; i++) {
+      const line = rawLines[i];
+      if (line.match(/(合\s*[計言十]|お買上額|ご請求|支払総額|現\s*計|クレジット売上)/i)) {
+        // 同じ行または直後3行以内の数値を検索
+        for (let j = i; j <= Math.min(i + 3, rawLines.length - 1); j++) {
+          const target = rawLines[j];
+          // 通番や承認番号を除外
+          if (target.match(/通番|承認|No|ID|ポイント|P\b/i)) continue;
+          const m = target.replace(/[,，\s]/g, "").match(/[¥￥\\]?\s*([1-9]\d{1,6})\s*(円)?/);
+          if (m) {
+            const val = parseInt(m[1], 10);
+            if (val > 0 && val < 5000000) {
+              totalLines.push(val);
+            }
+          }
+        }
       }
     }
 
-    // 抽出された品名と単価をペアリング
-    const itemCount = Math.min(rawItems.length, rawPrices.length);
-    for (let i = 0; i < itemCount; i++) {
+    if (totalLines.length > 0) {
+      totalAmount = totalLines[0]; // 最も「合計」に近い数値を採用
+    } else {
+      // フォールバック: ¥記号がついた代表的金額
+      const yenMatches = [...fullText.matchAll(/[¥￥]\s*([1-9]\d{1,6})/g)];
+      if (yenMatches.length > 0) {
+        totalAmount = parseInt(yenMatches[yenMatches.length - 1][1].replace(/[,，]/g, ""), 10);
+      }
+    }
+
+    // 5. 明細・品目の抽出（ガソリン給油、通常品目、ダイソー複数行すべてに対応）
+    // (A) ガソリンスタンド特有の給油明細（レギュラー/ハイオク/軽油 + 金額）
+    const gasMatch = fullText.match(/(レギュラー|ハイオク|軽油|灯油)[\s\S]*?[¥￥]?\s*([1-9]\d{2,5})/);
+    if (gasMatch) {
+      const fuelName = gasMatch[1];
+      let fuelPrice = totalAmount; // 給油レシートは合計と品目価格が一致することが多い
+      // 給油量があれば摘要に含める
+      const literMatch = fullText.match(/(\d{1,3}(?:\.\d{1,2})?)\s*[Llリットル]/);
+      const literInfo = literMatch ? ` (${literMatch[1]}L)` : "";
       items.push({
-        name: rawItems[i],
-        price: rawPrices[i]
+        name: `${fuelName}給油${literInfo}`,
+        price: fuelPrice || totalAmount
       });
     }
 
-    // フォールバック（明細が拾えなかった場合）
+    // (B) 一般レシート明細（ダイソー、スーパー等）
     if (items.length === 0) {
-      items.push({ name: `${store} お買上分`, price: totalAmount || 0 });
+      for (let i = 0; i < rawLines.length; i++) {
+        const line = rawLines[i];
+        if (isMetaLine(line) || line.match(/合\s*[計言十]|小計/)) continue;
+
+        // 同一行「品名 ¥金額」
+        const m = line.match(/^(.*?)[¥￥\\]\s*([1-9]\d{1,5})\s*(外|内|円|※)?$/);
+        if (m) {
+          let name = m[1].replace(/^[0-9\-\s\*※・/／]+/, "").trim();
+          let price = parseInt(m[2], 10);
+          if (m[3] === "外") price = Math.round(price * 1.1);
+          if (name.length >= 2 && !isMetaLine(name)) {
+            items.push({ name: name, price: price });
+          }
+        }
+      }
     }
 
-    // 合計金額が未取得なら明細合計を採用
-    if (totalAmount === 0) {
-      totalAmount = items.reduce((sum, item) => sum + item.price, 0);
+    // (C) 品名と金額が別ブロックの場合のフォールバックペアリング
+    if (items.length === 0) {
+      const candidateNames = [];
+      const candidatePrices = [];
+
+      let detailZone = false;
+      for (let i = 0; i < rawLines.length; i++) {
+        const line = rawLines[i];
+        if (line.match(/(明細|レジNo|お買上)/i)) detailZone = true;
+        if (line.match(/合\s*[計言十]|小計|PayPay/i) && candidatePrices.length > 0) break;
+
+        const pMatch = line.match(/^[¥￥\\]\s*([1-9]\d{1,5})\s*(外|内|円)?$/);
+        if (pMatch && !line.match(/通番|承認/)) {
+          let p = parseInt(pMatch[1], 10);
+          if (pMatch[2] === "外") p = Math.round(p * 1.1);
+          candidatePrices.push(p);
+          continue;
+        }
+
+        if (detailZone && !isMetaLine(line) && line.length >= 2 && !line.match(/^[0-9A-Z\s\-\:]+$/i)) {
+          candidateNames.push(line.replace(/^[0-9\-\s\*※・/／]+/, "").trim());
+        }
+      }
+
+      const count = Math.min(candidateNames.length, candidatePrices.length);
+      for (let i = 0; i < count; i++) {
+        items.push({ name: candidateNames[i], price: candidatePrices[i] });
+      }
+    }
+
+    // 明細が0件の場合のフォールバック
+    if (items.length === 0) {
+      items.push({ name: `${store} 利用分`, price: totalAmount });
+    }
+
+    // 6. 勘定科目・家計簿ジャンル判定（ガソリン・交通費を完全優先）
+    const lower = (store + " " + fullText).toLowerCase();
+    let suggestedCategory = "消耗品費";
+    let suggestedGenre = "日用品・消耗品";
+
+    if (/enejet|eneos|出光|コスモ|給油|ガソリン|レギュラー|ハイオク|軽油|駐車|タイムズ|高速|交通|jr|タクシー/.test(lower)) {
+      suggestedCategory = "旅費交通費";
+      suggestedGenre = "交通費";
+    } else if (/カフェ|珈琲|コーヒー|喫茶|居酒屋|レストラン|ランチ|マクドナルド/.test(lower)) {
+      suggestedCategory = "接待交際費";
+      suggestedGenre = "外食・カフェ";
+    } else if (/スーパー|食品|精肉|鮮魚|青果|生鮮|弁当|牛乳|パン/.test(lower)) {
+      suggestedCategory = "福利厚生費";
+      suggestedGenre = "食料品・スーパー";
+    } else if (/ダイソー|セリア|キャンドゥ|無印|文具|事務|ホームセンター/.test(lower)) {
+      suggestedCategory = "消耗品費";
+      suggestedGenre = "日用品・消耗品";
     }
 
     return {
@@ -176,9 +246,9 @@ const OCRProcessor = {
       store: store,
       items: items,
       totalAmount: totalAmount,
-      suggestedCategory: "消耗品費",
-      suggestedGenre: "日用品・消耗品",
-      memo: `${store}（${items.map(i => i.name).slice(0, 2).join('、')}等）`
+      suggestedCategory: suggestedCategory,
+      suggestedGenre: suggestedGenre,
+      memo: `${store}（${items.map(i => i.name).slice(0, 2).join('、')}）`
     };
   }
 };
