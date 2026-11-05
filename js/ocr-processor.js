@@ -53,15 +53,18 @@ const OCRProcessor = {
         img.onload = () => {
           let w = img.width;
           let h = img.height;
+
+          // リサイズ計算（変数を w と h に完全に統一）
           if (w > maxDimension || h > maxDimension) {
             if (w > h) {
               h = Math.round((h * maxDimension) / w);
               w = maxDimension;
             } else {
-              w = Math.round((width * maxDimension) / height);
-              height = maxDimension;
+              w = Math.round((w * maxDimension) / h);
+              h = maxDimension;
             }
           }
+
           const canvas = document.createElement("canvas");
           canvas.width = w;
           canvas.height = h;
@@ -113,7 +116,6 @@ const OCRProcessor = {
       }
     }
 
-    // 「¥440-」などの手書き・領収証金額表記からのフォールバック
     if (totalAmount === 0) {
       const markMatch = fullText.match(/[¥￥\\]\s*(\d{2,7})\s*[\-ー]/);
       if (markMatch) {
@@ -122,7 +124,6 @@ const OCRProcessor = {
     }
 
     // 4. 明細商品の検出
-    // パターン: 「ガラスキャニスター (ステ ¥100外」や「ワイヤーネットかご (横型 ¥100外」
     for (let i = 0; i < lines.length; i++) {
       let line = lines[i];
 
@@ -138,12 +139,10 @@ const OCRProcessor = {
         let name = itemMatch[1].trim();
         let price = parseInt(itemMatch[2], 10);
 
-        // 不要記号の除去
         name = name.replace(/^[\-—―\*※・/／\s\d]+/, "").replace(/[\-—―\*※/／\s]+$/, "").trim();
 
-        // 品名として妥当（2文字以上かつ管理英数字でない）
         if (name.length >= 2 && !name.match(/^[A-Z0-9\-\.\:]+$/i)) {
-          // 税抜表記の場合は10%税込に補正（ダイソーの100外→110円、200外→220円）
+          // 税抜表記は10%税込に換算
           if (line.includes("外")) {
             price = Math.round(price * 1.1);
           }
@@ -152,7 +151,6 @@ const OCRProcessor = {
       }
     }
 
-    // 合計金額が拾えていて明細合計と一致しない場合や、明細が空の場合の補完
     if (totalAmount === 0 && items.length > 0) {
       totalAmount = items.reduce((sum, item) => sum + item.price, 0);
     }
