@@ -1,4 +1,11 @@
-﻿const OCRProcessor = {
+﻿/**
+ * Receipt OCR Processor
+ * - 完全動的パース（ハードコード一切なし）
+ * - 行順シーケンシャル判定（品名 -> 同一行または次行の￥数値をペアリング）
+ * - ガソリン（L数抽出・給油総額）、ユニクロ（商品コード除去）、ダイソー（外税換算）対応
+ * - 決済手段（現金、クレカ、PayPay、AEON PAY、モバイルEneKey）の自動判定
+ */
+const OCRProcessor = {
   async processImage(file) {
     const visionKey = AppStorage.getVisionKey();
     if (!visionKey) {
@@ -33,10 +40,10 @@
     const result = await response.json();
     const annotation = result.responses?.[0]?.fullTextAnnotation;
     if (!annotation || !annotation.text) {
-      throw new Error("文字を検出できませんでした。");
+      throw new Error("画像から文字を検出できませんでした。");
     }
 
-    return this.parseLineByLineSequential(annotation.text);
+    return this.parseSequentialReceipt(annotation.text);
   },
 
   encodeImageToBase64(file, maxDimension) {
@@ -71,10 +78,7 @@
     });
   },
 
-  /**
-   * 行順シーケンシャルパースエンジン（ハードコード完全撤廃版）
-   */
-  parseLineByLineSequential(fullText) {
+  parseSequentialReceipt(fullText) {
     const rawLines = fullText.split("\n").map(l => l.trim()).filter(l => l.length > 0);
 
     let store = "";
@@ -89,7 +93,7 @@
       date = `${dateMatch[1]}-${dateMatch[2].padStart(2, "0")}-${dateMatch[3].padStart(2, "0")}`;
     }
 
-    // 2. 店舗名
+    // 2. 店舗名（支店名・SS名を優先して重複排除）
     const brandMatch = fullText.match(/(EneJet|ENEOS|出光|コスモ石油|ダイソー|DAISO|セリア|キャンドゥ|ユニクロ|UNIQLO|GU|ジーユー|セブン[-ー]イレブン|ファミリーマート|ローソン|イオン)/i);
     const branchMatch = fullText.match(/([^\n\r]{2,15}(?:SS|ＳＳ|給油所|インター店|長町店|好間店|店|支店))/);
     const corpMatch = fullText.match(/(株式会社[^\n\r]{2,15}|[^\n\r]{2,15}株式会社)/);
@@ -116,18 +120,17 @@
     } else if (/クレジット|一括|JCB|VISA|Master|AMEX|American Express|売上票|売上\s*JCB|カード売上/i.test(fullText)) {
       paymentMethod = "クレジットカード";
     } else if (/QR|QRコード|コード決済/i.test(fullText)) {
-      paymentMethod = "PayPay"; // 代表QR決済
+      paymentMethod = "PayPay";
     } else if (/現\s*金|現\s*計|お預|釣/i.test(fullText)) {
       paymentMethod = "現金";
     }
 
-    // 4. 合計金額の動的検出（特定数値の固定コードは完全排除）
+    // 4. 合計金額の動的検出（特定数値の固定なし）
     const totalKeywords = /(合\s*[計言十]|ご利用金額|ご請求|支払総額|現\s*計|クレジット売上|お買上)/i;
     for (let i = rawLines.length - 1; i >= 0; i--) {
       const line = rawLines[i];
       if (line.match(/通番|承認|No|内消費税|対象額|登録番号/)) continue;
       if (line.match(totalKeywords)) {
-        // 同一行、または後続2行以内から「¥数値」または数値を探索
         for (let j = i; j <= Math.min(i + 2, rawLines.length - 1); j++) {
           const target = rawLines[j];
           if (target.match(/通番|承認|No|内消費税|対象額/)) continue;
@@ -144,10 +147,11 @@
       }
     }
 
-    // 5. ¥に続く数値を抽出するヘルパー
+    // ¥に続く数値を抽出するヘルパー（カンマ対応）
     const getYenPrice = (str) => {
       if (str.match(/内消費税|対象額|小計|10%|8%/)) return null;
-      const m = str.replace(/[,，\s]/g, "").match(/[¥￥\\]\s*([1-9]\d{1,5})\s*(外|内|円|※)?/);
+      const clean = str.replace(/[,，\s]/g, "");
+      const m = clean.match(/[¥￥\\]\s*([1-9]\d{1,5})\s*(外|内|円|※)?/);
       if (m) {
         let val = parseInt(m[1], 10);
         if (m[2] === "外") val = Math.round(val * 1.1);
@@ -160,13 +164,12 @@
       return /(レジ|通番|伝票|承認|登録番号|T\d{7,13}|P\d{6,}|CEU|\d{1,2}:\d{2}|合計|合言十|小計|内消費税|税抜|対象額|お釣|お預|PayPay|点|領収|納品|保管|お願い|ポイント|ID|会員|売上|買上|担当|責任者|TEL|電話|JCB|VISA|@)/i.test(str);
     };
 
-    // (A) ガソリンレシート判定（給油量L数を取得し、金額はレシートの検出額を適用）
+    // (A) ガソリンレシート判定
     const gasMatch = fullText.match(/(レギュラー|ハイオク|軽油|灯油)/);
     if (gasMatch) {
       const literMatch = fullText.match(/(\d{1,3}(?:\.\d{1,2})?)\s*[Llリットル]/);
       const literStr = literMatch ? ` (${literMatch[1]}L)` : "";
 
-      // ガソリン明細行の直後にある単価以外の金額を探索
       let fuelPrice = totalAmount;
       if (fuelPrice === 0) {
         for (let i = 0; i < rawLines.length; i++) {
@@ -224,11 +227,10 @@
       }
     }
 
-    // 明細から合計額が算出できる場合のフォールバック（合計行が掠れていた場合）
+    // 合計行が欠落していた場合のフォールバック合算
     if (totalAmount === 0 && items.length > 0) {
       totalAmount = items.reduce((s, it) => s + it.price, 0);
     }
-
     if (items.length === 0) {
       items.push({ name: "利用分", price: totalAmount });
     }

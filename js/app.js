@@ -2,7 +2,7 @@
   let currentMode = "business";
   let currentFilter = "all";
   let currentWorkingItems = [];
-  let confirmedTotalAmount = 0; // OCRで確定した正規の合計金額を保持
+  let confirmedTotalAmount = 0;
   const particleSphere = new ParticleSphere("particle-sphere-canvas");
 
   const tabBusiness = document.getElementById("tab-business");
@@ -252,7 +252,7 @@
     formPaymentMethod.value = data.paymentMethod || "現金";
     formBusinessCategory.value = data.suggestedCategory || "消耗品費";
     
-    // 合計金額を厳密固定（明細の多重加算を完全防止）
+    // OCRで検出した合計金額をロック（初期表示時に自動合算で破壊されないようにする）
     confirmedTotalAmount = Number(data.totalAmount || 0);
     currentWorkingItems = data.items ? [...data.items] : [];
 
@@ -301,7 +301,7 @@
       input.addEventListener("input", (e) => {
         const idx = e.target.getAttribute("data-index");
         currentWorkingItems[idx].price = Number(e.target.value) || 0;
-        recalcTotal();
+        recalcTotalFromUserAction();
       });
     });
 
@@ -310,18 +310,16 @@
         const idx = btn.getAttribute("data-index");
         currentWorkingItems.splice(idx, 1);
         renderItemsTable();
-        recalcTotal();
+        recalcTotalFromUserAction();
         syncMemoFromItems();
       });
     });
   }
 
-  function recalcTotal() {
-    // ユーザーが手動で行編集・金額変更した場合のみ合算
+  // ユーザーが手動で行の増減や金額編集を行った時のみ再計算
+  function recalcTotalFromUserAction() {
     const sum = currentWorkingItems.reduce((s, it) => s + Number(it.price || 0), 0);
-    if (sum > 0) {
-      confirmedTotalAmount = sum;
-    }
+    confirmedTotalAmount = sum;
     formTotalDisplay.textContent = `¥${confirmedTotalAmount.toLocaleString()}`;
   }
 
@@ -343,7 +341,7 @@
       store: store,
       memo: formMemo.value.trim(),
       items: currentWorkingItems,
-      total: confirmedTotalAmount, // 確実に合計金額のみを保存
+      total: confirmedTotalAmount, // 二重加算されていない正規の合計金額を保存
       category: formBusinessCategory.value,
       paymentMethod: formPaymentMethod.value
     };
