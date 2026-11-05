@@ -1,6 +1,6 @@
 ﻿/**
- * Receipt Intelligence Processor using Gemini 2.5 Flash
- * 正規表現に頼らず、マルチモーダルLLMが文脈から直接正確なJSONを抽出
+ * Receipt Intelligence Processor using Gemini 3.8 Flash
+ * マルチモーダルLLMが文脈から直接正確なJSONを抽出
  */
 const OCRProcessor = {
   async processImage(file) {
@@ -11,7 +11,8 @@ const OCRProcessor = {
     }
 
     const base64Data = await this.encodeImageToBase64(file, 1600);
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    // 最新モデル gemini-3.8-flash に更新
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
 
     const promptText = `
 添付されたレシート画像を正確に解析し、日本の確定申告・家計簿に必要な情報を抽出してください。
