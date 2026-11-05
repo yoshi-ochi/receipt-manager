@@ -1,4 +1,11 @@
 ﻿const OCRProcessor = {
+  // 優先順位リスト（先頭が高負荷・制限の場合は次を即座に試行）
+  MODEL_CANDIDATES: [
+    "gemini-3.8-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-1.5-pro"
+  ],
+
   async processImage(file) {
     const geminiApiKey = AppStorage.getGeminiKey();
     if (!geminiApiKey) {
@@ -7,9 +14,6 @@
     }
 
     const { base64, mimeType } = await this.resizeAndEncode(file, 1200);
-
-    // 最新の推奨モデル gemini-3.8-flash エンドポイント
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${geminiApiKey}`;
 
     const prompt = 
       "添付された画像は日本のレシートまたは手書き領収書です。以下の情報を正確に読み取り、指定のJSONフォーマットのみを出力してください。\n" +
@@ -41,34 +45,51 @@
       }
     };
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    let lastError = null;
 
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.error?.message || `HTTP ${response.status}: APIリクエストに失敗しました`);
+    // 候補モデルを順番に試行（高負荷エラー時の自動フォールバック）
+    for (const model of this.MODEL_CANDIDATES) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (response.status === 503 || response.status === 429) {
+          console.warn(`Model ${model} is busy/overloaded (${response.status}). Trying fallback model...`);
+          continue;
+        }
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error?.message || `HTTP ${response.status}: APIリクエストに失敗しました`);
+        }
+
+        const resJson = await response.json();
+        let textResult = resJson.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+        textResult = textResult.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/s, "").trim();
+
+        const data = JSON.parse(textResult);
+
+        return {
+          date: data.date || new Date().toISOString().split('T')[0],
+          store: data.store || "不明店",
+          items: data.items && data.items.length > 0 ? data.items : [{ name: "合算品目", price: data.totalAmount || 0 }],
+          totalAmount: Number(data.totalAmount || 0),
+          suggestedCategory: data.suggestedCategory || "消耗品費",
+          suggestedGenre: data.suggestedGenre || "その他",
+          memo: data.memo || `${data.store || ""} レシート`
+        };
+
+      } catch (err) {
+        lastError = err;
+        console.warn(`Attempt failed with model ${model}:`, err.message);
+      }
     }
 
-    const resJson = await response.json();
-    let textResult = resJson.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-
-    // Markdownコードフェンス (```json ... ```) が混在した場合の安全な除去
-    textResult = textResult.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/s, "").trim();
-
-    const data = JSON.parse(textResult);
-
-    return {
-      date: data.date || new Date().toISOString().split('T')[0],
-      store: data.store || "不明店",
-      items: data.items && data.items.length > 0 ? data.items : [{ name: "合算品目", price: data.totalAmount || 0 }],
-      totalAmount: Number(data.totalAmount || 0),
-      suggestedCategory: data.suggestedCategory || "消耗品費",
-      suggestedGenre: data.suggestedGenre || "その他",
-      memo: data.memo || `${data.store || ""} レシート`
-    };
+    throw lastError || new Error("すべてのGeminiモデルが現在混雑しています。数十秒後に再度お試しください。");
   },
 
   resizeAndEncode(file, maxDimension) {
