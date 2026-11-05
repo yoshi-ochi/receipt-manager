@@ -58,7 +58,6 @@
       total: record.total,
       category: record.category || "消耗品費",
       paymentMethod: record.paymentMethod || "現金",
-      genre: record.genre || "",
       memo: record.memo || "",
       items: record.items || []
     };
@@ -66,12 +65,13 @@
     try {
       await fetch(gasUrl, {
         method: "POST",
+        mode: "no-cors",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(payload)
       });
-      console.log("Successfully recorded into 3 Accounting Books.");
+      console.log("Successfully sent to GAS via no-cors.");
     } catch (err) {
-      console.warn("Google Sheets Sync fetch warning:", err);
+      console.warn("GAS Sync fetch warning:", err);
     }
   },
 
@@ -112,14 +112,13 @@
     csvContent += "取引日,借方科目（費用）,決済手段,金額,取引先/店舗,摘要/内訳\n";
 
     records.forEach(r => {
-      const itemStr = (r.items || []).map(i => `${i.name}(¥${i.price})`).join("; ");
       csvContent += [
         r.date,
         `"${r.category || ""}"`,
         `"${r.paymentMethod || "現金"}"`,
         r.total,
         `"${r.store.replace(/"/g, '""')}"`,
-        `"${(r.memo || itemStr).replace(/"/g, '""')}"`
+        `"${(r.memo || "").replace(/"/g, '""')}"`
       ].join(",") + "\n";
     });
 
