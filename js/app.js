@@ -229,7 +229,7 @@
 
     loaderOverlay.classList.remove("hidden");
     particleSphere.start();
-    document.getElementById("loader-text").textContent = "レシート解析中...";
+    document.getElementById("loader-text").textContent = "レシート文字を解析中...";
 
     try {
       const extracted = await OCRProcessor.processImage(file);
@@ -251,8 +251,8 @@
     formMemo.value = data.memo || "";
     formPaymentMethod.value = data.paymentMethod || "現金";
     formBusinessCategory.value = data.suggestedCategory || "消耗品費";
-    
-    // OCRで検出した合計金額をロック（初期表示時に自動合算で破壊されないようにする）
+
+    // OCRで決定した合計金額を固定値として保持
     confirmedTotalAmount = Number(data.totalAmount || 0);
     currentWorkingItems = data.items ? [...data.items] : [];
 
@@ -316,7 +316,6 @@
     });
   }
 
-  // ユーザーが手動で行の増減や金額編集を行った時のみ再計算
   function recalcTotalFromUserAction() {
     const sum = currentWorkingItems.reduce((s, it) => s + Number(it.price || 0), 0);
     confirmedTotalAmount = sum;
@@ -341,7 +340,7 @@
       store: store,
       memo: formMemo.value.trim(),
       items: currentWorkingItems,
-      total: confirmedTotalAmount, // 二重加算されていない正規の合計金額を保存
+      total: confirmedTotalAmount,
       category: formBusinessCategory.value,
       paymentMethod: formPaymentMethod.value
     };
