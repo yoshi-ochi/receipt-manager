@@ -1,4 +1,7 @@
-﻿const AppStorage = {
+﻿/**
+ * LocalStorage & Google Sheets Data Synchronization (Standard JSON API)
+ */
+const AppStorage = {
   getAll() {
     try {
       const data = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.RECORDS);
@@ -11,6 +14,10 @@
 
   setAll(records) {
     localStorage.setItem(APP_CONFIG.STORAGE_KEYS.RECORDS, JSON.stringify(records));
+  },
+
+  clearRecords() {
+    localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.RECORDS);
   },
 
   async saveRecord(record) {
@@ -49,7 +56,10 @@
     localStorage.setItem(APP_CONFIG.STORAGE_KEYS.VISION_KEY, key.trim());
   },
 
-  // mode: "no-cors" で送信し、CORSエラーを完全に回避してスプシに保存
+  /**
+   * スプレッドシートへJSONデータをPOST保存
+   * ※CORSプリフライト（OPTIONS）遮断を回避するためtext/plainでJSON文字列を送信
+   */
   async syncToGoogleSheets(record, gasUrl) {
     const payload = {
       action: "save",
@@ -65,57 +75,45 @@
     };
 
     try {
-      await fetch(gasUrl, {
+      const response = await fetch(gasUrl, {
         method: "POST",
-        mode: "no-cors",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(payload)
       });
-      console.log("Successfully sent data to Google Sheets via no-cors mode.");
+      console.log("Record synced to Google Sheets.");
+      return response;
     } catch (err) {
-      console.warn("GAS Sync fetch error:", err);
+      console.warn("Google Sheets Sync fetch warning:", err);
     }
   },
 
-  // JSONP方式でCORS制限を受けずにスプシ履歴を全件取得
-  fetchFromGoogleSheets(mode = "business") {
+  /**
+   * スプレッドシートから全履歴を標準JSON形式でGET取得
+   */
+  async fetchFromGoogleSheets(mode = "business") {
     const gasUrl = this.getGasUrl();
     if (!gasUrl) {
-      return Promise.reject(new Error("スプレッドシート（GAS）のURLが未設定です。"));
+      throw new Error("スプレッドシート（GAS）のURLが未設定です。右上の設定からURLを登録してください。");
     }
 
-    return new Promise((resolve, reject) => {
-      const callbackName = "gas_callback_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
-      const script = document.createElement("script");
-      const timeout = setTimeout(() => {
-        cleanup();
-        reject(new Error("スプレッドシートの取得がタイムアウトしました。"));
-      }, 15000);
+    const sep = gasUrl.includes("?") ? "&" : "?";
+    const fetchUrl = `${gasUrl}${sep}mode=${mode}&_t=${Date.now()}`;
 
-      function cleanup() {
-        clearTimeout(timeout);
-        if (script.parentNode) script.parentNode.removeChild(script);
-        delete window[callbackName];
-      }
-
-      window[callbackName] = (res) => {
-        cleanup();
-        if (res && res.status === "success") {
-          resolve(res.records || []);
-        } else {
-          reject(new Error(res ? res.message : "データ取得に失敗しました。"));
-        }
-      };
-
-      script.onerror = () => {
-        cleanup();
-        reject(new Error("GASスクリプトの読み込みに失敗しました。URLまたはアクセス権限をご確認ください。"));
-      };
-
-      const sep = gasUrl.includes("?") ? "&" : "?";
-      script.src = `${gasUrl}${sep}mode=${mode}&callback=${callbackName}&_=${Date.now()}`;
-      document.body.appendChild(script);
+    const response = await fetch(fetchUrl, {
+      method: "GET",
+      headers: { "Accept": "application/json" }
     });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: スプレッドシートからのデータ取得に失敗しました`);
+    }
+
+    const result = await response.json();
+    if (result.status !== "success") {
+      throw new Error(result.message || "データ取得に失敗しました");
+    }
+
+    return result.records || [];
   },
 
   exportToCsv(mode = "business") {
