@@ -50,13 +50,14 @@ const OCRProcessor = {
         img.onload = () => {
           let w = img.width;
           let h = img.height;
+          // リサイズ計算（変数の参照バグを修正）
           if (w > maxDimension || h > maxDimension) {
             if (w > h) {
               h = Math.round((h * maxDimension) / w);
               w = maxDimension;
             } else {
-              w = Math.round((width * maxDimension) / height);
-              height = maxDimension;
+              w = Math.round((w * maxDimension) / h);
+              h = maxDimension;
             }
           }
           const canvas = document.createElement("canvas");
@@ -94,7 +95,7 @@ const OCRProcessor = {
       date = `${y}-${m}-${d}`;
     }
 
-    // 2. 店舗名の抽出（先頭5行の中で記号や管理文字列以外の最有力行）
+    // 2. 店舗名の抽出（先頭付近から管理文字列・記号以外の有力行を取得）
     const headerExcludeRegex = /領収|レシート|No|TEL|電話|登録|20\d{2}|株式会社|チェーン|お買上|税|伝票/i;
     for (let i = 0; i < Math.min(6, rawLines.length); i++) {
       const line = rawLines[i].replace(/[!！\*#=＝\-_]/g, "").trim();
@@ -108,11 +109,10 @@ const OCRProcessor = {
     // 3. 管理情報・メタ情報の除外正規表現フィルター
     const metaFilter = /(レシート\s*No|レジ\s*No|伝票|端末|取引|係員|担当|責任者|TEL|電話|FAX|登録番号|事業者|登録\s*No|T\d{7,13}|P\d{6,}|\d{1,2}:\d{2}|コード|カード|クレジット|現金|お預|釣|買上計|小計|合計|内税|外税|対象額|値引|割引|ポイント)/i;
 
-    // 4. 合計金額の特定（後方から「合計」「お買上」等のキーワードを探す）
+    // 4. 合計金額の特定
     for (let i = 0; i < rawLines.length; i++) {
       const line = rawLines[i];
       if (line.match(/(合\s*計|総\s*計|お買上額|ご請求|お支払い|現\s*計)/i)) {
-        // 同じ行または直後の行から金額を抽出
         let searchScope = line;
         if (i + 1 < rawLines.length && !rawLines[i + 1].match(/合|計|税|預/)) {
           searchScope += " " + rawLines[i + 1];
@@ -125,7 +125,6 @@ const OCRProcessor = {
     }
 
     // 5. 明細行の抽出（中段エリアから品名と金額を抽出）
-    let insideItemZone = false;
     for (let i = 0; i < rawLines.length; i++) {
       const line = rawLines[i];
 
@@ -134,7 +133,7 @@ const OCRProcessor = {
         break;
       }
 
-      // ヘッダー除外
+      // ヘッダーや管理番号の除外
       if (metaFilter.test(line)) {
         continue;
       }
@@ -146,22 +145,21 @@ const OCRProcessor = {
         const price = parseInt(priceMatch[2], 10);
         let itemName = line.replace(/[,，]/g, "").substring(0, priceMatch.index).trim();
 
-        // 不要な記号や先頭・末尾のノイズをクリーンアップ
+        // 記号や不要文字のクリーンアップ
         itemName = itemName.replace(/^[\s\d\-—―\*※・/／]+/, "").replace(/[\-—―\*※/／\s]+$/, "").trim();
 
-        // 品名として妥当（2文字以上かつメタ情報を含まない、価格が常識的な範囲）
         if (itemName.length >= 2 && !metaFilter.test(itemName) && price >= 10 && price < 1000000) {
           items.push({ name: itemName, price: price });
         }
       }
     }
 
-    // 明細合計から合計額を算出（合計行が取れなかった場合のフォールバック）
+    // 合計が未取得で明細がある場合は明細合計を適用
     if (totalAmount === 0 && items.length > 0) {
       totalAmount = items.reduce((sum, item) => sum + item.price, 0);
     }
 
-    // 明細が1つも取れなかった場合のフォールバック
+    // 明細が0件の場合のフォールバック
     if (items.length === 0) {
       items.push({ name: `${store} お買上分`, price: totalAmount });
     }
