@@ -1,5 +1,5 @@
 ﻿/**
- * Receipt OCR Processor (Safe Literal Client)
+ * Receipt OCR Processor (Clean URL Gemini Client)
  */
 const OCRProcessor = {
   async processImage(file) {
@@ -14,7 +14,6 @@ const OCRProcessor = {
   },
 
   async callGeminiAPI(base64Image, apiKey) {
-    // 構文エラーを防止するため、単一引用符とjoinで安全に組み立て
     const promptLines = [
       '添付されたレシートまたは領収書の画像を正確に読み取り、指定のJSON形式のみを出力してください。',
       'Markdownのコードフェンスや解説文は含めず、純粋なJSONオブジェクトのみを返してください。',
@@ -64,12 +63,13 @@ const OCRProcessor = {
       const model = models[i];
       try {
         console.log('[OCRProcessor] Requesting Model: ' + model);
-        const url = '[https://generativelanguage.googleapis.com/v1beta/models/](https://generativelanguage.googleapis.com/v1beta/models/)' + model + ':generateContent?key=' + apiKey;
+        // マークダウンのゴミを完全排除した純粋なURL文字列
+        const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey;
 
         const controller = new AbortController();
         const timeoutId = setTimeout(function() { controller.abort(); }, 25000);
 
-        const response = await fetch(url, {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(requestBody),
