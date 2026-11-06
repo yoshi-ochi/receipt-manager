@@ -1,5 +1,5 @@
 ﻿/**
- * Receipt OCR Processor (Structured Schema Client)
+ * Receipt OCR Processor (Gemini 3.8 / 3.5 Flash Client)
  */
 const OCRProcessor = {
   async processImage(file) {
@@ -9,13 +9,12 @@ const OCRProcessor = {
       throw new Error("Gemini API key is not configured");
     }
 
-    // 無料枠の通信負荷を抑えるため画像を軽量化
     const base64Data = await this.encodeImageToBase64(file, 1024);
     return await this.callGeminiAPI(base64Data, apiKey.trim());
   },
 
   async callGeminiAPI(base64Image, apiKey) {
-    const promptText = "添付された日本のレシート画像から、取引日(date: YYYY-MM-DD)、店名(store)、最終合計支払額(totalAmount: 整数)、決済手段(paymentMethod: 現金/クレジットカード/PayPay/AEON PAY/モバイルEneKey)、勘定科目(suggestedCategory)、メモ(memo)、品目リスト(items)を正確に抽出してください。";
+    const promptText = "日本のレシート画像から、取引日(date: YYYY-MM-DD)、店名(store)、最終合計支払額(totalAmount: 整数)、決済手段(paymentMethod: 現金/クレジットカード/PayPay/AEON PAY/モバイルEneKey)、勘定科目(suggestedCategory)、メモ(memo)、品目リスト(items: [{name, price}])を抽出してください。ガソリン給油ならL数を品名かmemoに記載。";
 
     const requestBody = {
       contents: [
@@ -59,56 +58,57 @@ const OCRProcessor = {
       }
     };
 
-    // 無料枠で確実に動作するモデル順
-    const models = ["gemini-2.5-flash", "gemini-1.5-flash"];
+    // API指示に従い 3.8-flash を本線、3.5-flash をフォールバックに指定
+    const targetModels = ['gemini-3.8-flash', 'gemini-3.5-flash'];
     let lastError = null;
 
-    for (let i = 0; i < models.length; i++) {
-      const model = models[i];
+    for (let i = 0; i < targetModels.length; i++) {
+      const model = targetModels[i];
       try {
-        console.log("[OCRProcessor] Requesting Model: " + model);
-        const endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + encodeURIComponent(apiKey);
+        console.log('[OCRProcessor] Requesting Model: ' + model);
+        const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(apiKey);
 
         const response = await fetch(endpoint, {
-          method: "POST",
+          method: 'POST',
           headers: {
-            "Content-Type": "application/json"
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey
           },
           body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
           const errData = await response.json().catch(function() { return {}; });
-          throw new Error(errData.error && errData.error.message ? errData.error.message : ("HTTP " + response.status));
+          throw new Error(errData.error && errData.error.message ? errData.error.message : ('HTTP ' + response.status));
         }
 
         const data = await response.json();
         const candidateText = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] ? data.candidates[0].content.parts[0].text : null;
         if (!candidateText) {
-          throw new Error("Geminiから解析テキストが得られませんでした。");
+          throw new Error('Geminiから有効な解析テキストが得られませんでした。');
         }
 
         const result = JSON.parse(candidateText);
-        console.log("[OCRProcessor] Success:", result);
+        console.log('[OCRProcessor] Success with ' + model + ':', result);
 
         return {
-          date: result.date || new Date().toISOString().split("T")[0],
-          store: result.store || "不明店",
+          date: result.date || new Date().toISOString().split('T')[0],
+          store: result.store || '不明店',
           totalAmount: Number(result.totalAmount) || 0,
-          paymentMethod: result.paymentMethod || "現金",
-          suggestedCategory: result.suggestedCategory || "消耗品費",
-          suggestedGenre: "日用品・消耗品",
+          paymentMethod: result.paymentMethod || '現金',
+          suggestedCategory: result.suggestedCategory || '消耗品費',
+          suggestedGenre: '日用品・消耗品',
           items: Array.isArray(result.items) ? result.items : [],
-          memo: result.memo || ""
+          memo: result.memo || ''
         };
 
       } catch (err) {
-        console.warn("[OCRProcessor] " + model + " failed:", err);
+        console.warn('[OCRProcessor] ' + model + ' failed:', err);
         lastError = err;
       }
     }
 
-    throw lastError || new Error("Gemini APIへのリクエストがすべて失敗しました。");
+    throw lastError || new Error('Gemini APIへのリクエストに失敗しました。');
   },
 
   encodeImageToBase64(file, maxDimension) {
@@ -128,12 +128,12 @@ const OCRProcessor = {
               h = maxDimension;
             }
           }
-          const canvas = document.createElement("canvas");
+          const canvas = document.createElement('canvas');
           canvas.width = w;
           canvas.height = h;
-          const ctx = canvas.getContext("2d");
+          const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL("image/jpeg", 0.75).split(",")[1]);
+          resolve(canvas.toDataURL('image/jpeg', 0.8).split(',')[1]);
         };
         img.onerror = reject;
         img.src = e.target.result;
