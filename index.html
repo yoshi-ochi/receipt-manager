@@ -58,7 +58,7 @@
     <button class="analytics-filter-btn px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-white text-black" data-filter="all">総額</button>
     <button class="analytics-filter-btn px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-neutral-900 text-neutral-300 border border-neutral-800" data-filter="month">月別</button>
     <button class="analytics-filter-btn px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-neutral-900 text-neutral-300 border border-neutral-800" data-filter="week">週別</button>
-    <button class="analytics-filter-btn px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-neutral-900 text-neutral-300 border border-neutral-800" data-filter="store">店舗別</button>
+    <button class="analytics-filter-btn px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-neutral-900 text-neutral-300 border border-neutral-800" data-filter="store">取引先別</button>
     <button class="analytics-filter-btn px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-neutral-900 text-neutral-300 border border-neutral-800" data-filter="category" id="btn-filter-category">科目別</button>
   </div>
 
@@ -82,11 +82,15 @@
     <section id="records-container" class="space-y-2.5"></section>
   </main>
 
-  <!-- Camera Action Button -->
-  <div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black via-black/90 to-transparent pointer-events-none z-20 flex justify-center pb-safe">
+  <!-- Bottom Floating Action Bar (手入力 ＋ カメラ読み取り) -->
+  <div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black via-black/90 to-transparent pointer-events-none z-20 flex justify-center gap-3 pb-safe">
+    <button id="btn-manual-entry" class="pointer-events-auto flex items-center justify-center space-x-1.5 bg-neutral-900 hover:bg-neutral-800 text-white font-semibold py-3 px-5 rounded-full border border-neutral-700 shadow-lg active:scale-95 transition">
+      <i data-lucide="edit-3" class="w-4 h-4 text-neutral-300"></i>
+      <span class="text-xs font-bold">手入力</span>
+    </button>
     <label for="camera-input" class="pointer-events-auto flex items-center justify-center space-x-2 bg-white hover:bg-neutral-200 text-black font-semibold py-3 px-6 rounded-full shadow-lg active:scale-95 transition cursor-pointer">
-      <i data-lucide="camera" class="w-5 h-5"></i>
-      <span class="text-xs font-bold tracking-tight">レシートを読み取る</span>
+      <i data-lucide="camera" class="w-4 h-4"></i>
+      <span class="text-xs font-bold tracking-tight">レシート撮影</span>
     </label>
     <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden">
   </div>
@@ -99,16 +103,16 @@
     <p id="loader-text" class="text-xs font-medium tracking-wide text-neutral-300 mt-4 animate-pulse">Gemini AIでレシートを精密解析中...</p>
   </div>
 
-  <!-- Confirmation Modal -->
+  <!-- Entry & Confirmation Modal -->
   <div id="edit-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
     <div class="bg-neutral-900 border border-neutral-800 w-full max-w-lg rounded-t-2xl sm:rounded-2xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
       <div class="px-5 py-3.5 border-b border-neutral-800 flex items-center justify-between">
         <div>
-          <h2 class="text-sm font-bold text-white flex items-center gap-1.5">
+          <h2 class="text-sm font-bold text-white flex items-center gap-1.5" id="modal-title">
             <i data-lucide="receipt" class="w-4 h-4 text-neutral-300"></i>
-            レシート確認・修正
+            取引の記帳・修正
           </h2>
-          <p class="text-[11px] text-neutral-400 mt-0.5" id="modal-mode-subtitle">3帳簿（事業主借）への自動展開</p>
+          <p class="text-[11px] text-neutral-400 mt-0.5" id="modal-mode-subtitle">帳簿へ自動展開</p>
         </div>
         <button id="modal-btn-close" class="p-1 rounded-full text-neutral-400 hover:text-white">
           <i data-lucide="x" class="w-5 h-5"></i>
@@ -116,31 +120,43 @@
       </div>
 
       <div class="p-5 overflow-y-auto space-y-4 text-xs">
+        <!-- 取引種別セグメント（事業用のみ: 経費 / 仕入 / 売上） -->
+        <div id="group-trade-type" class="space-y-1">
+          <label class="block text-[11px] font-medium text-neutral-400">取引種別</label>
+          <div class="grid grid-cols-3 p-0.5 bg-neutral-950 rounded-lg border border-neutral-800 text-xs">
+            <button type="button" class="btn-trade-type py-1.5 font-semibold rounded-md bg-neutral-800 text-white" data-type="expense">一般経費</button>
+            <button type="button" class="btn-trade-type py-1.5 font-semibold rounded-md text-neutral-400 hover:text-white" data-type="purchase">仕入れ (仕入帳)</button>
+            <button type="button" class="btn-trade-type py-1.5 font-semibold rounded-md text-neutral-400 hover:text-white" data-type="sales">売上 (売上帳)</button>
+          </div>
+        </div>
+
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-[11px] font-medium text-neutral-400 mb-1">取引日</label>
             <input type="date" id="form-date" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
           </div>
           <div>
-            <label class="block text-[11px] font-medium text-neutral-400 mb-1">店名 / 取引先</label>
-            <input type="text" id="form-store" placeholder="店名を入力" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
+            <label class="block text-[11px] font-medium text-neutral-400 mb-1" id="label-store">店舗 / 取引先</label>
+            <input type="text" id="form-store" placeholder="取引先名を入力" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
           </div>
         </div>
 
         <div class="grid grid-cols-2 gap-3">
-          <!-- 事業用科目選択（事業用時） -->
+          <!-- 勘定科目選択 -->
           <div id="group-business-category">
-            <label class="block text-[11px] font-medium text-neutral-400 mb-1">借方勘定科目</label>
+            <label class="block text-[11px] font-medium text-neutral-400 mb-1" id="label-category">借方勘定科目</label>
             <select id="form-business-category" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
+              <option value="消耗品費">消耗品費 (備品/日用雑貨)</option>
               <option value="旅費交通費">旅費交通費 (ガソリン/交通)</option>
-              <option value="消耗品費">消耗品費 (日用品/物品)</option>
               <option value="接待交際費">接待交際費</option>
               <option value="通信費">通信費</option>
+              <option value="水道光熱費">水道光熱費</option>
+              <option value="外注工賃">外注工賃</option>
               <option value="雑費">雑費</option>
             </select>
           </div>
 
-          <!-- 個人用ジャンル選択（個人用時） -->
+          <!-- 個人用ジャンル選択 -->
           <div id="group-personal-genre" class="hidden">
             <label class="block text-[11px] font-medium text-neutral-400 mb-1">家計簿ジャンル</label>
             <select id="form-personal-genre" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
@@ -167,7 +183,7 @@
 
         <div>
           <div class="flex items-center justify-between mb-1.5">
-            <label class="text-[11px] font-medium text-neutral-400">購入品・明細リスト</label>
+            <label class="text-[11px] font-medium text-neutral-400">明細 / 内訳リスト</label>
             <button type="button" id="btn-add-item-row" class="text-xs text-neutral-300 hover:text-white flex items-center gap-1">
               <i data-lucide="plus" class="w-3.5 h-3.5"></i> 行を追加
             </button>
@@ -187,13 +203,13 @@
         </div>
 
         <div class="bg-neutral-950 p-3 rounded-xl border border-neutral-800 flex items-center justify-between">
-          <span class="text-xs text-neutral-400 font-medium">合計支払金額</span>
+          <span class="text-xs text-neutral-400 font-medium">合計金額</span>
           <span id="form-total-display" class="text-lg font-bold text-white tracking-tight">¥0</span>
         </div>
 
         <div>
           <label class="block text-[11px] font-medium text-neutral-400 mb-1">摘要 / メモ</label>
-          <input type="text" id="form-memo" placeholder="利用メモ" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
+          <input type="text" id="form-memo" placeholder="品名や用途メモ" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
         </div>
       </div>
 
@@ -239,7 +255,4 @@
   <script>lucide.createIcons();</script>
 </body>
 </html>
-
-
-
 

@@ -1,5 +1,6 @@
 ﻿document.addEventListener("DOMContentLoaded", async () => {
   let currentMode = "business"; // "business" | "personal"
+  let currentTradeType = "expense"; // "expense" | "purchase" | "sales"
   let currentFilter = "all";
   let currentWorkingItems = [];
   let confirmedTotalAmount = 0;
@@ -19,13 +20,16 @@
 
   const loaderOverlay = document.getElementById("loader-overlay");
   const cameraInput = document.getElementById("camera-input");
+  const btnManualEntry = document.getElementById("btn-manual-entry");
 
   const editModal = document.getElementById("edit-modal");
   const modalBtnClose = document.getElementById("modal-btn-close");
   const modalBtnCancel = document.getElementById("modal-btn-cancel");
   const modalBtnSave = document.getElementById("modal-btn-save");
+  const modalTitle = document.getElementById("modal-title");
   const modalModeSubtitle = document.getElementById("modal-mode-subtitle");
 
+  const groupTradeType = document.getElementById("group-trade-type");
   const formDate = document.getElementById("form-date");
   const formStore = document.getElementById("form-store");
   const formMemo = document.getElementById("form-memo");
@@ -38,6 +42,8 @@
   const formBusinessCategory = document.getElementById("form-business-category");
   const formPersonalGenre = document.getElementById("form-personal-genre");
   const formPaymentMethod = document.getElementById("form-payment-method");
+  const labelCategory = document.getElementById("label-category");
+  const labelStore = document.getElementById("label-store");
   const labelPayment = document.getElementById("label-payment");
 
   const btnSyncSettings = document.getElementById("btn-sync-settings");
@@ -54,8 +60,8 @@
     if (mode === "business") {
       tabBusiness.className = "py-2 font-semibold rounded-md transition-all duration-200 bg-neutral-800 text-white shadow-sm";
       tabPersonal.className = "py-2 font-semibold rounded-md transition-all duration-200 text-neutral-400 hover:text-white";
-      headerSubtitle.textContent = "青色申告 (立替 3帳簿連携)";
-      listSectionTitle.textContent = "仕訳一覧 (事業主借)";
+      headerSubtitle.textContent = "青色申告 (立替・仕入・売上)";
+      listSectionTitle.textContent = "仕訳一覧 (事業用)";
       btnFilterCategory.textContent = "科目別";
     } else {
       tabPersonal.className = "py-2 font-semibold rounded-md transition-all duration-200 bg-neutral-800 text-white shadow-sm";
@@ -65,6 +71,34 @@
       btnFilterCategory.textContent = "ジャンル別";
     }
     renderAllViews();
+  }
+
+  function setTradeType(type) {
+    currentTradeType = type;
+    document.querySelectorAll(".btn-trade-type").forEach(b => {
+      if (b.getAttribute("data-type") === type) {
+        b.className = "btn-trade-type py-1.5 font-semibold rounded-md bg-neutral-800 text-white";
+      } else {
+        b.className = "btn-trade-type py-1.5 font-semibold rounded-md text-neutral-400 hover:text-white";
+      }
+    });
+
+    if (type === "sales") {
+      labelCategory.textContent = "貸方勘定科目";
+      labelStore.textContent = "販売先 / 顧客名";
+      labelPayment.textContent = "代金受取手段";
+      modalModeSubtitle.textContent = "仕訳帳・総勘定元帳・売上帳に自動記帳";
+    } else if (type === "purchase") {
+      labelCategory.textContent = "借方勘定科目";
+      labelStore.textContent = "仕入先 / 業者名";
+      labelPayment.textContent = "立替決済手段";
+      modalModeSubtitle.textContent = "仕訳帳・総勘定元帳・仕入帳に自動記帳";
+    } else {
+      labelCategory.textContent = "借方勘定科目";
+      labelStore.textContent = "店舗 / 支払先";
+      labelPayment.textContent = "立替決済手段";
+      modalModeSubtitle.textContent = "仕訳帳・総勘定元帳・経費帳に自動記帳";
+    }
   }
 
   function formatDisplayDate(rawDate) {
@@ -87,7 +121,7 @@
     const totalAmount = allRecords.reduce((sum, r) => sum + Number(r.total || 0), 0);
     recordCountBadge.textContent = `${allRecords.length}件`;
 
-    const titleText = currentMode === "business" ? "青色申告 立替総支出" : "個人支出 合計";
+    const titleText = currentMode === "business" ? "青色申告 取引総額" : "個人支出 合計";
 
     summaryContainer.innerHTML = `
       <div class="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
@@ -99,7 +133,7 @@
             <h2 class="text-2xl font-black text-white mt-1 tracking-tight">¥${totalAmount.toLocaleString()}</h2>
           </div>
           <span class="text-[11px] bg-neutral-800 text-neutral-300 px-2.5 py-1 rounded-full font-medium">
-            ${allRecords.length} 投稿 / 明細
+            ${allRecords.length} 記帳 / 明細
           </span>
         </div>
       </div>
@@ -116,7 +150,7 @@
       recordsContainer.innerHTML = `
         <div class="text-center py-14 px-4 border border-dashed border-neutral-800 rounded-xl bg-neutral-950">
           <i data-lucide="receipt" class="w-8 h-8 text-neutral-600 mx-auto mb-2"></i>
-          <p class="text-xs font-medium text-neutral-400">${currentMode === "business" ? "仕訳記録がありません" : "家計簿の記録がありません"}</p>
+          <p class="text-xs font-medium text-neutral-400">記録された取引がありません</p>
         </div>
       `;
       lucide.createIcons();
@@ -129,6 +163,7 @@
       if (!displayMemo) displayMemo = "内訳なし";
 
       const tagLabel = currentMode === "business" ? (r.category || "消耗品費") : (r.genre || r.category || "日用品");
+      const isSales = (r.tradeType === "sales" || r.category === "売上高");
 
       return `
         <div class="bg-neutral-900 border border-neutral-800 rounded-xl p-3.5 hover:border-neutral-700 transition">
@@ -136,18 +171,20 @@
             <div class="flex-1 min-w-0 pr-2">
               <div class="flex items-center gap-2 mb-1 flex-wrap">
                 <span class="text-xs font-bold text-white truncate">${r.store}</span>
-                <span class="text-[10px] px-2 py-0.5 rounded font-medium bg-neutral-800 text-neutral-300">
+                <span class="text-[10px] px-2 py-0.5 rounded font-medium ${isSales ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-neutral-800 text-neutral-300'}">
                   ${tagLabel}
                 </span>
                 <span class="text-[10px] px-2 py-0.5 rounded font-medium bg-neutral-800 text-neutral-400">
-                  ${currentMode === "business" ? "事業主借 (" + (r.paymentMethod || "立替") + ")" : (r.paymentMethod || "決済")}
+                  ${currentMode === "business" ? (isSales ? "事業主貸" : "事業主借") : (r.paymentMethod || "決済")}
                 </span>
               </div>
               <p class="text-xs text-neutral-300 font-medium mt-1 truncate">${displayMemo}</p>
               <div class="text-[10px] text-neutral-500 mt-1.5">${cleanDate}</div>
             </div>
             <div class="text-right flex flex-col justify-between items-end">
-              <span class="text-sm font-bold text-white tracking-tight">¥${Number(r.total).toLocaleString()}</span>
+              <span class="text-sm font-bold ${isSales ? 'text-emerald-400' : 'text-white'} tracking-tight">
+                ${isSales ? '+' : ''}¥${Number(r.total).toLocaleString()}
+              </span>
               <button class="btn-delete-record text-neutral-500 hover:text-rose-400 p-1 mt-2 transition" data-id="${r.id}" title="削除">
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
               </button>
@@ -228,7 +265,7 @@
     recordsContainer.classList.add("hidden");
 
     try {
-      const ssRecords = await AppStorage.fetchFromGoogleSheets(currentMode);
+      const ssRecords = await AppStorage.fetchFromGoogleSheets();
       if (ssRecords && ssRecords.length > 0) {
         AppStorage.setAll(ssRecords);
       }
@@ -241,10 +278,23 @@
     }
   }
 
-  btnSyncSheets.addEventListener("click", async () => {
-    await syncSheetsWithSkeleton();
+  btnSyncSheets.addEventListener("click", syncSheetsWithSkeleton);
+
+  // 手入力ボタンのクリック
+  btnManualEntry.addEventListener("click", () => {
+    openEditModal({
+      date: new Date().toISOString().split("T")[0],
+      store: "",
+      totalAmount: 0,
+      paymentMethod: "クレジットカード",
+      suggestedCategory: "消耗品費",
+      suggestedGenre: "日用品",
+      items: [{ name: "", price: 0 }],
+      memo: ""
+    }, true);
   });
 
+  // レシート撮影
   cameraInput.addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -257,7 +307,7 @@
       const extracted = await OCRProcessor.processImage(file);
       particleSphere.stop();
       loaderOverlay.classList.add("hidden");
-      openEditModal(extracted);
+      openEditModal(extracted, false);
     } catch (err) {
       particleSphere.stop();
       loaderOverlay.classList.add("hidden");
@@ -267,19 +317,20 @@
     }
   });
 
-  function openEditModal(data) {
+  function openEditModal(data, isManual = false) {
     formDate.value = formatDisplayDate(data.date);
     formStore.value = data.store || "";
     formMemo.value = data.memo || "";
     formPaymentMethod.value = data.paymentMethod || "クレジットカード";
 
     if (currentMode === "business") {
+      groupTradeType.classList.remove("hidden");
       groupBusinessCategory.classList.remove("hidden");
       groupPersonalGenre.classList.add("hidden");
+      setTradeType(data.tradeType || "expense");
       formBusinessCategory.value = data.suggestedCategory || "消耗品費";
-      modalModeSubtitle.textContent = "青色申告 3帳簿（貸方: 事業主借）へ自動展開";
-      labelPayment.textContent = "立替決済手段";
     } else {
+      groupTradeType.classList.add("hidden");
       groupBusinessCategory.classList.add("hidden");
       groupPersonalGenre.classList.remove("hidden");
       formPersonalGenre.value = data.suggestedGenre || "日用品";
@@ -287,12 +338,17 @@
       labelPayment.textContent = "決済手段";
     }
 
+    modalTitle.innerHTML = isManual
+      ? `<i data-lucide="edit-3" class="w-4 h-4 text-neutral-300"></i> 取引の手動入力`
+      : `<i data-lucide="receipt" class="w-4 h-4 text-neutral-300"></i> レシート確認・修正`;
+
     confirmedTotalAmount = Number(data.totalAmount || 0);
-    currentWorkingItems = data.items ? [...data.items] : [];
+    currentWorkingItems = data.items && data.items.length > 0 ? [...data.items] : [{ name: "", price: 0 }];
 
     renderItemsTable();
     formTotalDisplay.textContent = `¥${confirmedTotalAmount.toLocaleString()}`;
     editModal.classList.remove("hidden");
+    lucide.createIcons();
   }
 
   function closeEditModal() {
@@ -307,10 +363,10 @@
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td class="py-2 px-3">
-          <input type="text" class="item-name-input w-full bg-transparent text-white focus:bg-neutral-800 rounded px-1.5 py-0.5 outline-none" value="${item.name}" data-index="${index}">
+          <input type="text" placeholder="品名" class="item-name-input w-full bg-transparent text-white focus:bg-neutral-800 rounded px-1.5 py-0.5 outline-none" value="${item.name}" data-index="${index}">
         </td>
         <td class="py-2 px-3">
-          <input type="number" class="item-price-input w-full bg-transparent text-right font-medium text-white focus:bg-neutral-800 rounded px-1.5 py-0.5 outline-none" value="${item.price}" data-index="${index}">
+          <input type="number" placeholder="0" class="item-price-input w-full bg-transparent text-right font-medium text-white focus:bg-neutral-800 rounded px-1.5 py-0.5 outline-none" value="${item.price || ''}" data-index="${index}">
         </td>
         <td class="py-2 px-2 text-center">
           <button type="button" class="btn-remove-item text-neutral-500 hover:text-rose-400 p-1" data-index="${index}">
@@ -342,7 +398,11 @@
     document.querySelectorAll(".btn-remove-item").forEach(btn => {
       btn.addEventListener("click", () => {
         const idx = btn.getAttribute("data-index");
-        currentWorkingItems.splice(idx, 1);
+        if (currentWorkingItems.length > 1) {
+          currentWorkingItems.splice(idx, 1);
+        } else {
+          currentWorkingItems[0] = { name: "", price: 0 };
+        }
         renderItemsTable();
         recalcTotalFromUserAction();
         syncMemoFromItems();
@@ -351,31 +411,45 @@
   }
 
   function recalcTotalFromUserAction() {
-    const sum = currentWorkingItems.reduce((s, it) => s + Number(it.price || 0), 0);
-    confirmedTotalAmount = sum;
+    confirmedTotalAmount = currentWorkingItems.reduce((s, it) => s + Number(it.price || 0), 0);
     formTotalDisplay.textContent = `¥${confirmedTotalAmount.toLocaleString()}`;
   }
 
   function syncMemoFromItems() {
-    formMemo.value = currentWorkingItems.map(it => it.name).filter(n => n.length > 0).join("、");
+    const valid = currentWorkingItems.map(it => it.name.trim()).filter(n => n.length > 0);
+    if (valid.length > 0) {
+      formMemo.value = valid.length === 1 ? valid[0] : `${valid.length}点 (${valid.join("、")})`;
+    }
   }
 
   btnAddItemRow.addEventListener("click", () => {
-    currentWorkingItems.push({ name: "新規品目", price: 0 });
+    currentWorkingItems.push({ name: "", price: 0 });
     renderItemsTable();
   });
 
+  document.querySelectorAll(".btn-trade-type").forEach(btn => {
+    btn.addEventListener("click", () => {
+      setTradeType(btn.getAttribute("data-type"));
+    });
+  });
+
   modalBtnSave.addEventListener("click", async () => {
-    const store = formStore.value.trim() || "不明店";
+    const store = formStore.value.trim() || (currentTradeType === "sales" ? "販売先" : "取引先");
+    let chosenCategory = formBusinessCategory.value;
+    if (currentMode === "business") {
+      if (currentTradeType === "sales") chosenCategory = "売上高";
+      else if (currentTradeType === "purchase") chosenCategory = "仕入高";
+    }
 
     const record = {
       mode: currentMode,
+      tradeType: currentMode === "business" ? currentTradeType : "personal",
       date: formDate.value,
       store: store,
       memo: formMemo.value.trim(),
       items: currentWorkingItems,
       total: confirmedTotalAmount,
-      category: currentMode === "business" ? formBusinessCategory.value : formPersonalGenre.value,
+      category: chosenCategory,
       genre: formPersonalGenre.value,
       paymentMethod: formPaymentMethod.value
     };
