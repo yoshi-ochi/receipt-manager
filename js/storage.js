@@ -1,134 +1,114 @@
-﻿const AppStorage = {
+﻿/**
+ * Storage & Google Sheets Sync Module (Robust v2.0)
+ */
+const AppStorage = {
+  STORAGE_KEY: "rm_receipt_records",
+  GAS_URL_KEY: "rm_gas_url",
+  VISION_KEY: "rm_gemini_api_key",
+
   getAll() {
+    const raw = localStorage.getItem(this.STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  },
+
+  setAll(records) {
+    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(records));
+  },
+
+  getGasUrl() {
+    return localStorage.getItem(this.GAS_URL_KEY) || "";
+  },
+
+  setGasUrl(url) {
+    localStorage.setItem(this.GAS_URL_KEY, url.trim());
+  },
+
+  getVisionKey() {
+    return localStorage.getItem(this.VISION_KEY) || "";
+  },
+
+  setVisionKey(key) {
+    localStorage.setItem(this.VISION_KEY, key.trim());
+  },
+
+  async saveRecord(record) {
+    record.id = "local-" + Date.now();
+    record.createdAt = new Date().toISOString();
+
+    // ローカルへ先行保存
+    const records = this.getAll();
+    records.push(record);
+    this.setAll(records);
+
+    const gasUrl = this.getGasUrl();
+    if (!gasUrl) return;
+
     try {
-      const data = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.RECORDS);
-      return data ? JSON.parse(data) : [];
-    } catch (e) {
-      console.error(e);
+      const response = await fetch(gasUrl, {
+        method: "POST",
+        mode: "cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(record)
+      });
+      const res = await response.json().catch(() => ({}));
+      if (res.status !== "success") {
+        throw new Error(res.message || "スプレッドシートへの書き込みでエラーが返されました。");
+      }
+      console.log("[AppStorage] Successfully saved to Google Sheets:", res);
+    } catch (err) {
+      console.error("[AppStorage] Save error:", err);
+      throw err;
+    }
+  },
+
+  async fetchFromGoogleSheets() {
+    const gasUrl = this.getGasUrl();
+    if (!gasUrl) return [];
+
+    try {
+      const url = gasUrl + (gasUrl.includes("?") ? "&" : "?") + "mode=all&t=" + Date.now();
+      const response = await fetch(url, { method: "GET", mode: "cors" });
+      const json = await response.json();
+      if (json.status === "success" && Array.isArray(json.data)) {
+        return json.data;
+      }
+      return [];
+    } catch (err) {
+      console.error("[AppStorage] Fetch error:", err);
       return [];
     }
   },
 
-  setAll(records) {
-    localStorage.setItem(APP_CONFIG.STORAGE_KEYS.RECORDS, JSON.stringify(records));
-  },
-
-  async saveRecord(record) {
-    const list = this.getAll();
-    record.id = "rec_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
-    record.createdAt = new Date().toISOString();
-    list.unshift(record);
-    this.setAll(list);
-
-    const gasUrl = this.getGasUrl();
-    if (gasUrl) {
-      await this.syncToGoogleSheets(record, gasUrl);
-    }
-    return record;
-  },
-
   deleteRecord(id) {
-    let list = this.getAll();
-    list = list.filter(r => r.id !== id);
-    this.setAll(list);
-  },
-
-  getGasUrl() {
-    return localStorage.getItem(APP_CONFIG.STORAGE_KEYS.GAS_URL) || "";
-  },
-
-  setGasUrl(url) {
-    localStorage.setItem(APP_CONFIG.STORAGE_KEYS.GAS_URL, url.trim());
-  },
-
-  getVisionKey() {
-    return localStorage.getItem(APP_CONFIG.STORAGE_KEYS.VISION_KEY) || "";
-  },
-
-  setVisionKey(key) {
-    localStorage.setItem(APP_CONFIG.STORAGE_KEYS.VISION_KEY, key.trim());
-  },
-
-  async syncToGoogleSheets(record, gasUrl) {
-    const payload = {
-      action: "save",
-      mode: record.mode,
-      date: record.date,
-      store: record.store,
-      total: record.total,
-      category: record.category || "消耗品費",
-      paymentMethod: record.paymentMethod || "現金",
-      memo: record.memo || "",
-      items: record.items || []
-    };
-
-    try {
-      await fetch(gasUrl, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify(payload)
-      });
-      console.log("Successfully sent to GAS via no-cors.");
-    } catch (err) {
-      console.warn("GAS Sync fetch warning:", err);
-    }
-  },
-
-  async fetchFromGoogleSheets(mode = "business") {
-    const gasUrl = this.getGasUrl();
-    if (!gasUrl) {
-      throw new Error("スプレッドシート（GAS）のURLが未設定です。");
-    }
-
-    const sep = gasUrl.includes("?") ? "&" : "?";
-    const fetchUrl = `${gasUrl}${sep}mode=${mode}&_t=${Date.now()}`;
-
-    const response = await fetch(fetchUrl, {
-      method: "GET",
-      headers: { "Accept": "application/json" }
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: スプレッドシートからの取得に失敗しました`);
-    }
-
-    const result = await response.json();
-    if (result.status !== "success") {
-      throw new Error(result.message || "データ取得に失敗しました");
-    }
-
-    return result.records || [];
+    const records = this.getAll().filter(r => r.id !== id);
+    this.setAll(records);
   },
 
   exportToCsv(mode = "business") {
     const records = this.getAll().filter(r => r.mode === mode);
     if (records.length === 0) {
-      alert("エクスポートするデータがありません。");
+      alert("エクスポート対象のデータがありません。");
       return;
     }
+    const headers = ["取引日", "店舗名", "科目/ジャンル", "支払金額", "決済手段", "摘要・内訳"];
+    const rows = records.map(r => [
+      r.date,
+      `"${(r.store || '').replace(/"/g, '""')}"`,
+      r.category || r.genre || '',
+      r.total,
+      r.paymentMethod,
+      `"${(r.memo || '').replace(/"/g, '""')}"`
+    ]);
 
-    let csvContent = "\uFEFF";
-    csvContent += "取引日,借方科目（費用）,決済手段,金額,取引先/店舗,摘要/内訳\n";
-
-    records.forEach(r => {
-      csvContent += [
-        r.date,
-        `"${r.category || ""}"`,
-        `"${r.paymentMethod || "現金"}"`,
-        r.total,
-        `"${r.store.replace(/"/g, '""')}"`,
-        `"${(r.memo || "").replace(/"/g, '""')}"`
-      ].join(",") + "\n";
-    });
-
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `journal_${mode}_${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `receipt_records_${mode}_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 };
+
+window.AppStorage = AppStorage;
