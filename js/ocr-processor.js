@@ -1,5 +1,5 @@
 ﻿/**
- * Receipt OCR Processor (Business & Personal Classification)
+ * Receipt OCR Processor (Fast Response: 3.5-Flash Default)
  */
 const OCRProcessor = {
   async processImage(file) {
@@ -9,7 +9,8 @@ const OCRProcessor = {
       throw new Error("Gemini API key is not configured");
     }
 
-    const base64Data = await this.encodeImageToBase64(file, 1024);
+    // アップロード速度向上のため長辺を800pxに圧縮
+    const base64Data = await this.encodeImageToBase64(file, 800);
     return await this.callGeminiAPI(base64Data, apiKey.trim());
   },
 
@@ -82,7 +83,8 @@ const OCRProcessor = {
       }
     };
 
-    const targetModels = ['gemini-3.8-flash', 'gemini-3.5-flash'];
+    // 高速応答のため 3.5-flash を最優先に設定
+    const targetModels = ['gemini-3.5-flash', 'gemini-3.8-flash'];
     let lastError = null;
 
     for (let i = 0; i < targetModels.length; i++) {
@@ -159,7 +161,7 @@ const OCRProcessor = {
           canvas.height = h;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', 0.8).split(',')[1]);
+          resolve(canvas.toDataURL('image/jpeg', 0.7).split(',')[1]);
         };
         img.onerror = reject;
         img.src = e.target.result;
