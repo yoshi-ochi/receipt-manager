@@ -2,131 +2,140 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Receipt Manager</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/particle-sphere.css">
-  <link rel="stylesheet" href="css/skeleton.css">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="レシート記帳">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="レシート">
+  <link rel="apple-touch-icon" href="icon.png">
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen pb-24 antialiased selection:bg-indigo-500 selection:text-white">
+<body class="bg-black text-neutral-100 min-h-screen pb-28 antialiased selection:bg-neutral-800">
 
-  <!-- ヘッダー -->
-  <header class="sticky top-0 z-30 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 flex items-center justify-between">
+  <!-- Instagram Header -->
+  <header class="sticky top-0 z-30 bg-black/90 backdrop-blur-md border-b border-neutral-800 px-4 py-3 flex items-center justify-between">
     <div class="flex items-center space-x-2">
-      <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/30">
+      <div class="w-7 h-7 rounded-lg bg-neutral-900 border border-neutral-700 flex items-center justify-center font-bold text-xs text-white">
         RM
       </div>
       <div>
-        <h1 class="text-sm font-bold tracking-tight text-white leading-none">Receipt Manager</h1>
-        <p class="text-[10px] text-slate-400 mt-0.5">Gemini AI × 青色申告 3帳簿連携</p>
+        <h1 class="text-sm font-semibold tracking-tight text-white leading-none">Receipt Manager</h1>
+        <p class="text-[10px] text-neutral-400 mt-0.5">青色申告 3帳簿連携</p>
       </div>
     </div>
     
-    <div class="flex items-center space-x-1.5">
-      <button id="btn-sync-sheets" class="p-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition flex items-center gap-1" title="スプレッドシートから履歴を取得">
-        <i data-lucide="refresh-cw" class="w-4 h-4 text-emerald-400"></i>
+    <div class="flex items-center space-x-2">
+      <button id="btn-sync-sheets" class="p-2 rounded-full hover:bg-neutral-900 text-neutral-300 transition active:scale-95" title="スプレッドシート同期">
+        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
       </button>
-      <button id="btn-sync-settings" class="p-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition" title="連携設定">
+      <button id="btn-sync-settings" class="p-2 rounded-full hover:bg-neutral-900 text-neutral-300 transition active:scale-95" title="設定">
         <i data-lucide="settings" class="w-4 h-4"></i>
       </button>
-      <button id="btn-export-csv" class="p-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition" title="CSVエクスポート">
+      <button id="btn-export-csv" class="p-2 rounded-full hover:bg-neutral-900 text-neutral-300 transition active:scale-95" title="CSV">
         <i data-lucide="download" class="w-4 h-4"></i>
       </button>
     </div>
   </header>
 
-  <!-- タブ切替 -->
+  <!-- Segmented Switch (Instagram Tab Style) -->
   <div class="px-4 pt-3">
-    <div class="grid grid-cols-2 p-1 bg-slate-900 rounded-xl border border-slate-800">
-      <button id="tab-business" class="py-2 text-xs font-semibold rounded-lg transition-all duration-200 bg-indigo-600 text-white shadow-md">
-        事業用 (複式簿記 3帳簿)
+    <div class="grid grid-cols-2 p-0.5 bg-neutral-900 rounded-lg border border-neutral-800 text-xs">
+      <button id="tab-business" class="py-2 font-semibold rounded-md transition-all duration-200 bg-neutral-800 text-white shadow-sm">
+        事業用 (複式簿記)
       </button>
-      <button id="tab-personal" class="py-2 text-xs font-semibold rounded-lg transition-all duration-200 text-slate-400 hover:text-slate-200">
+      <button id="tab-personal" class="py-2 font-semibold rounded-md transition-all duration-200 text-neutral-400 hover:text-white">
         個人用 (家計簿)
       </button>
     </div>
   </div>
 
-  <!-- 集計フィルターバー -->
-  <div class="px-4 pt-3 overflow-x-auto scrollbar-none flex gap-1.5 text-xs">
-    <button class="analytics-filter-btn px-3 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-indigo-500/20 text-indigo-300 border border-indigo-500/40" data-filter="all">総額</button>
-    <button class="analytics-filter-btn px-3 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-slate-900 text-slate-400 border border-slate-800" data-filter="month">月別</button>
-    <button class="analytics-filter-btn px-3 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-slate-900 text-slate-400 border border-slate-800" data-filter="week">週別</button>
-    <button class="analytics-filter-btn px-3 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-slate-900 text-slate-400 border border-slate-800" data-filter="store">店舗別</button>
-    <button class="analytics-filter-btn px-3 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-slate-900 text-slate-400 border border-slate-800" data-filter="category">勘定科目別</button>
+  <!-- Filter Carousel -->
+  <div class="px-4 pt-3 overflow-x-auto scrollbar-none flex gap-2 text-xs">
+    <button class="analytics-filter-btn px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-white text-black" data-filter="all">総額</button>
+    <button class="analytics-filter-btn px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-neutral-900 text-neutral-300 border border-neutral-800" data-filter="month">月別</button>
+    <button class="analytics-filter-btn px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-neutral-900 text-neutral-300 border border-neutral-800" data-filter="week">週別</button>
+    <button class="analytics-filter-btn px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-neutral-900 text-neutral-300 border border-neutral-800" data-filter="store">店舗別</button>
+    <button class="analytics-filter-btn px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-neutral-900 text-neutral-300 border border-neutral-800" data-filter="category">科目別</button>
   </div>
 
-  <!-- メインコンテンツ -->
+  <!-- Main Container -->
   <main class="px-4 py-3 max-w-lg mx-auto">
     <section id="summary-container" class="mb-4"></section>
     <section id="analytics-breakdown-container" class="mb-4 space-y-2 hidden"></section>
 
-    <div class="flex items-center justify-between mb-2">
-      <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">仕訳帳 明細一覧</h3>
-      <span id="record-count-badge" class="text-[10px] text-slate-500 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">0件</span>
+    <!-- Skeleton Loader (for Sheets Sync) -->
+    <section id="skeleton-container" class="space-y-3 hidden">
+      <div class="skeleton-box h-20 rounded-xl"></div>
+      <div class="skeleton-box h-20 rounded-xl"></div>
+      <div class="skeleton-box h-20 rounded-xl"></div>
+    </section>
+
+    <div class="flex items-center justify-between mb-2 mt-4">
+      <h3 class="text-xs font-semibold text-neutral-400 tracking-wider">仕訳一覧</h3>
+      <span id="record-count-badge" class="text-[11px] text-neutral-400 bg-neutral-900 px-2 py-0.5 rounded border border-neutral-800">0件</span>
     </div>
+    
     <section id="records-container" class="space-y-2.5"></section>
   </main>
 
-  <!-- 撮影ボタン -->
-  <div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent pointer-events-none z-20 flex justify-center">
-    <label for="camera-input" class="pointer-events-auto flex items-center justify-center space-x-2 bg-gradient-to-r from-indigo-500 to-cyan-500 hover:from-indigo-600 hover:to-cyan-600 text-white font-bold py-3.5 px-7 rounded-full shadow-xl shadow-indigo-500/25 active:scale-95 transition cursor-pointer">
+  <!-- Camera Action Bar (Instagram Bottom Bar style) -->
+  <div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black via-black/90 to-transparent pointer-events-none z-20 flex justify-center pb-safe">
+    <label for="camera-input" class="pointer-events-auto flex items-center justify-center space-x-2 bg-white hover:bg-neutral-200 text-black font-semibold py-3 px-6 rounded-full shadow-lg active:scale-95 transition cursor-pointer">
       <i data-lucide="camera" class="w-5 h-5"></i>
-      <span class="text-sm">レシートを撮影（Gemini解析）</span>
+      <span class="text-xs font-bold tracking-tight">レシートを読み取る</span>
     </label>
     <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden">
   </div>
 
-  <!-- Particle Sphere ローディング -->
-  <div id="loader-overlay" class="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-50 flex flex-col items-center justify-center hidden">
+  <!-- Particle Sphere Loader (For AI Parsing) -->
+  <div id="loader-overlay" class="fixed inset-0 bg-black/95 backdrop-blur-md z-50 flex flex-col items-center justify-center hidden">
     <div class="particle-sphere-wrapper relative flex items-center justify-center">
       <canvas id="particle-sphere-canvas" width="280" height="280" class="w-[240px] h-[240px]"></canvas>
     </div>
-    <p id="loader-text" class="text-sm font-medium tracking-wide text-indigo-300 mt-4 animate-pulse">Gemini AIで解析中...</p>
+    <p id="loader-text" class="text-xs font-medium tracking-wide text-neutral-300 mt-4 animate-pulse">Gemini AIでレシートを精密解析中...</p>
   </div>
 
-  <!-- 確認・修正モーダル -->
+  <!-- Edit & Confirm Modal (Instagram Bottom Sheet Style) -->
   <div id="edit-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
-    <div class="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-t-2xl sm:rounded-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
-      <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+    <div class="bg-neutral-900 border border-neutral-800 w-full max-w-lg rounded-t-2xl sm:rounded-2xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
+      <div class="px-5 py-3.5 border-b border-neutral-800 flex items-center justify-between">
         <div>
-          <h2 class="text-base font-bold text-white flex items-center gap-1.5">
-            <i data-lucide="receipt" class="w-4 h-4 text-indigo-400"></i>
+          <h2 class="text-sm font-bold text-white flex items-center gap-1.5">
+            <i data-lucide="receipt" class="w-4 h-4 text-neutral-300"></i>
             レシート確認・仕訳修正
           </h2>
-          <p class="text-xs text-slate-400 mt-0.5" id="modal-mode-subtitle">3帳簿（仕訳帳・元帳・出納帳）への自動展開</p>
+          <p class="text-[11px] text-neutral-400 mt-0.5">3帳簿（仕訳帳・元帳・出納帳）への自動展開</p>
         </div>
-        <button id="modal-btn-close" class="p-1 rounded-lg text-slate-400 hover:text-white">
+        <button id="modal-btn-close" class="p-1 rounded-full text-neutral-400 hover:text-white">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </div>
 
-      <div class="p-5 overflow-y-auto space-y-4 text-sm">
+      <div class="p-5 overflow-y-auto space-y-4 text-xs">
+        <!-- 修正した日付 & 店舗ボックス -->
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-semibold text-slate-400 mb-1">取引日</label>
-            <input type="date" id="form-date" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500">
+            <label class="block text-[11px] font-medium text-neutral-400 mb-1">取引日</label>
+            <input type="date" id="form-date" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
           </div>
           <div>
-            <label class="block text-xs font-semibold text-slate-400 mb-1">店名 / 取引先</label>
-            <input type="text" id="form-store" placeholder="店名を入力" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500">
+            <label class="block text-[11px] font-medium text-neutral-400 mb-1">店名 / 取引先</label>
+            <input type="text" id="form-store" placeholder="店名を入力" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
           </div>
         </div>
 
         <div class="grid grid-cols-2 gap-3">
-          <div id="business-category-group">
-            <label class="block text-xs font-semibold text-indigo-400 mb-1">借方科目（費用）</label>
-            <select id="form-business-category" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500"></select>
+          <div>
+            <label class="block text-[11px] font-medium text-neutral-400 mb-1">借方科目（費用）</label>
+            <select id="form-business-category" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500"></select>
           </div>
           <div>
-            <label class="block text-xs font-semibold text-emerald-400 mb-1">決済手段（貸方科目）</label>
-            <select id="form-payment-method" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:ring-2 focus:ring-emerald-500">
+            <label class="block text-[11px] font-medium text-neutral-400 mb-1">決済手段（貸方科目）</label>
+            <select id="form-payment-method" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
               <option value="現金">現金（出納帳連動）</option>
               <option value="クレジットカード">クレジットカード（未払金）</option>
               <option value="PayPay">PayPay</option>
@@ -138,87 +147,76 @@
 
         <div>
           <div class="flex items-center justify-between mb-1.5">
-            <label class="text-xs font-semibold text-slate-400">購入品・明細リスト</label>
-            <button type="button" id="btn-add-item-row" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
-              <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> 行を追加
+            <label class="text-[11px] font-medium text-neutral-400">購入品・明細リスト</label>
+            <button type="button" id="btn-add-item-row" class="text-xs text-neutral-300 hover:text-white flex items-center gap-1">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i> 行を追加
             </button>
           </div>
-          <div class="bg-slate-950/70 border border-slate-800 rounded-lg overflow-hidden">
+          <div class="bg-neutral-950 border border-neutral-800 rounded-lg overflow-hidden">
             <table class="w-full text-left text-xs">
-              <thead class="bg-slate-800 text-slate-400 border-b border-slate-700">
+              <thead class="bg-neutral-900/60 text-neutral-400 border-b border-neutral-800">
                 <tr>
                   <th class="py-2 px-3">品名 / 内容</th>
                   <th class="py-2 px-3 w-24 text-right">金額 (円)</th>
                   <th class="py-2 px-2 w-10 text-center">消去</th>
                 </tr>
               </thead>
-              <tbody id="items-table-body" class="divide-y divide-slate-800"></tbody>
+              <tbody id="items-table-body" class="divide-y divide-neutral-800/80"></tbody>
             </table>
           </div>
         </div>
 
-        <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700/80 flex items-center justify-between">
-          <span class="text-xs text-slate-300 font-medium">合計支払金額</span>
+        <div class="bg-neutral-950 p-3 rounded-xl border border-neutral-800 flex items-center justify-between">
+          <span class="text-xs text-neutral-400 font-medium">合計支払金額</span>
           <span id="form-total-display" class="text-lg font-bold text-white tracking-tight">¥0</span>
         </div>
 
         <div>
-          <label class="block text-xs font-semibold text-slate-400 mb-1">摘要 / メモ</label>
-          <input type="text" id="form-memo" placeholder="事業利用メモ" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500">
+          <label class="block text-[11px] font-medium text-neutral-400 mb-1">摘要 / メモ</label>
+          <input type="text" id="form-memo" placeholder="事業利用メモ" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
         </div>
       </div>
 
-      <div class="p-4 bg-slate-800/50 border-t border-slate-800 flex gap-2">
-        <button id="modal-btn-cancel" class="flex-1 py-2.5 rounded-lg bg-slate-800 text-slate-300 font-semibold text-xs hover:bg-slate-700 transition">
+      <div class="p-4 bg-neutral-950 border-t border-neutral-800 flex gap-2">
+        <button id="modal-btn-cancel" class="flex-1 py-3 rounded-lg bg-neutral-800 text-neutral-300 font-semibold text-xs hover:bg-neutral-700 transition">
           キャンセル
         </button>
-        <button id="modal-btn-save" class="flex-1 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-1.5">
+        <button id="modal-btn-save" class="flex-1 py-3 rounded-lg bg-white text-black font-bold text-xs hover:bg-neutral-200 transition flex items-center justify-center gap-1.5 active:scale-98">
           <i data-lucide="check" class="w-4 h-4"></i> 3帳簿へ保存・記帳
         </button>
       </div>
     </div>
   </div>
 
-  <!-- 設定モーダル -->
+  <!-- Settings Modal -->
   <div id="settings-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 hidden flex items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl p-5 shadow-2xl">
-      <h3 class="text-sm font-bold text-white mb-2 flex items-center gap-1.5">
-        <i data-lucide="settings" class="w-4 h-4 text-indigo-400"></i> アプリ・連携設定
+    <div class="bg-neutral-900 border border-neutral-800 w-full max-w-md rounded-2xl p-5 shadow-2xl">
+      <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-1.5">
+        <i data-lucide="settings" class="w-4 h-4 text-neutral-300"></i> 連携設定
       </h3>
       <div class="space-y-4">
         <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1">Google Gemini API Key</label>
-          <input type="password" id="setting-vision-key" placeholder="AIzaSy..." class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500">
+          <label class="block text-xs font-semibold text-neutral-300 mb-1">Google Gemini API Key</label>
+          <input type="password" id="setting-vision-key" placeholder="AQ... または AIza..." class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
         </div>
         <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1">GAS Web App URL (スプレッドシート連携)</label>
-          <input type="url" id="setting-gas-url" placeholder="https://script.google.com/macros/s/.../exec" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500">
+          <label class="block text-xs font-semibold text-neutral-300 mb-1">GAS Web App URL (3帳簿スプシ連動)</label>
+          <input type="url" id="setting-gas-url" placeholder="https://script.google.com/macros/s/.../exec" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
         </div>
       </div>
       <div class="mt-5 flex gap-2">
-        <button id="settings-btn-close" class="flex-1 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">閉じる</button>
-        <button id="settings-btn-save" class="flex-1 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold">設定を保存</button>
+        <button id="settings-btn-close" class="flex-1 py-2 rounded-lg bg-neutral-800 text-neutral-300 text-xs font-semibold">閉じる</button>
+        <button id="settings-btn-save" class="flex-1 py-2 rounded-lg bg-white text-black font-bold text-xs">設定を保存</button>
       </div>
     </div>
   </div>
 
-    <script src="js/config.js?v=1793890148"></script>
-  <script src="js/particle-sphere.js?v=1793890148"></script>
-  <script src="js/storage.js?v=1793890148"></script>
-  <script src="js/ocr-processor.js?v=1793929150"></script>
-  <script src="js/app.js?v=1793890148"></script>
+  <script src="js/config.js"></script>
+  <script src="js/particle-sphere.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/ocr-processor.js"></script>
+  <script src="js/app.js"></script>
   <script>lucide.createIcons();</script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
 

@@ -1,4 +1,4 @@
-﻿document.addEventListener("DOMContentLoaded", () => {
+﻿document.addEventListener("DOMContentLoaded", async () => {
   let currentMode = "business";
   let currentFilter = "all";
   let currentWorkingItems = [];
@@ -10,6 +10,7 @@
   const recordsContainer = document.getElementById("records-container");
   const summaryContainer = document.getElementById("summary-container");
   const analyticsBreakdown = document.getElementById("analytics-breakdown-container");
+  const skeletonContainer = document.getElementById("skeleton-container");
   const recordCountBadge = document.getElementById("record-count-badge");
 
   const loaderOverlay = document.getElementById("loader-overlay");
@@ -52,16 +53,15 @@
   function setMode(mode) {
     currentMode = mode;
     if (mode === "business") {
-      tabBusiness.className = "py-2 text-xs font-semibold rounded-lg transition-all duration-200 bg-indigo-600 text-white shadow-md";
-      tabPersonal.className = "py-2 text-xs font-semibold rounded-lg transition-all duration-200 text-slate-400 hover:text-slate-200";
+      tabBusiness.className = "py-2 font-semibold rounded-md transition-all duration-200 bg-neutral-800 text-white shadow-sm";
+      tabPersonal.className = "py-2 font-semibold rounded-md transition-all duration-200 text-neutral-400 hover:text-white";
     } else {
-      tabPersonal.className = "py-2 text-xs font-semibold rounded-lg transition-all duration-200 bg-cyan-600 text-white shadow-md";
-      tabBusiness.className = "py-2 text-xs font-semibold rounded-lg transition-all duration-200 text-slate-400 hover:text-slate-200";
+      tabPersonal.className = "py-2 font-semibold rounded-md transition-all duration-200 bg-neutral-800 text-white shadow-sm";
+      tabBusiness.className = "py-2 font-semibold rounded-md transition-all duration-200 text-neutral-400 hover:text-white";
     }
     renderAllViews();
   }
 
-  // 日付の正規化ヘルパー（Wed Oct 07 2026... を 2026-10-07 に成型）
   function formatDisplayDate(rawDate) {
     if (!rawDate) return "日付不明";
     const d = new Date(rawDate);
@@ -75,21 +75,25 @@
   }
 
   function renderAllViews() {
-    const allRecords = AppStorage.getAll().filter(r => r.mode === currentMode);
+    const allRecords = AppStorage.getAll()
+      .filter(r => r.mode === currentMode)
+      .sort((a, b) => new Date(b.date) - new Date(a.date)); // 日付降順で最新を手前に表示
+
     const totalAmount = allRecords.reduce((sum, r) => sum + Number(r.total || 0), 0);
     recordCountBadge.textContent = `${allRecords.length}件`;
 
+    // Instagram Card Style Summary
     summaryContainer.innerHTML = `
-      <div class="bg-gradient-to-br from-indigo-900/40 via-slate-900 to-slate-900 border border-indigo-500/30 rounded-2xl p-4 shadow-xl">
+      <div class="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
         <div class="flex justify-between items-start">
           <div>
-            <p class="text-[11px] font-medium tracking-wide uppercase text-indigo-400">
-              青色申告 対象総支出 (3帳簿連動)
+            <p class="text-[10px] font-semibold tracking-wider uppercase text-neutral-400">
+              青色申告 対象総支出
             </p>
-            <h2 class="text-2xl font-black text-white mt-1">¥${totalAmount.toLocaleString()}</h2>
+            <h2 class="text-2xl font-black text-white mt-1 tracking-tight">¥${totalAmount.toLocaleString()}</h2>
           </div>
-          <span class="text-[11px] bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full border border-slate-700 font-medium">
-            ${allRecords.length} 件の仕訳
+          <span class="text-[11px] bg-neutral-800 text-neutral-300 px-2.5 py-1 rounded-full font-medium">
+            ${allRecords.length} 投稿 / 仕訳
           </span>
         </div>
       </div>
@@ -104,40 +108,40 @@
 
     if (allRecords.length === 0) {
       recordsContainer.innerHTML = `
-        <div class="text-center py-12 px-4 border border-dashed border-slate-800 rounded-2xl bg-slate-900/40">
-          <i data-lucide="receipt" class="w-10 h-10 text-slate-600 mx-auto mb-2"></i>
-          <p class="text-sm font-semibold text-slate-400">仕訳データがありません</p>
+        <div class="text-center py-14 px-4 border border-dashed border-neutral-800 rounded-xl bg-neutral-950">
+          <i data-lucide="receipt" class="w-8 h-8 text-neutral-600 mx-auto mb-2"></i>
+          <p class="text-xs font-medium text-neutral-400">記帳されたレシートがありません</p>
         </div>
       `;
       lucide.createIcons();
       return;
     }
 
+    // Instagram Feed Style List Item
     recordsContainer.innerHTML = allRecords.map(r => {
       const cleanDate = formatDisplayDate(r.date);
-      // 余計な二重店舗名があればクリーンアップして表示
       let displayMemo = (r.memo || "").replace(new RegExp(`^${r.store}\\s*`, "i"), "").trim();
       if (!displayMemo) displayMemo = "内訳なし";
 
       return `
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 hover:border-slate-700 transition">
+        <div class="bg-neutral-900 border border-neutral-800 rounded-xl p-3.5 hover:border-neutral-700 transition">
           <div class="flex items-start justify-between">
             <div class="flex-1 min-w-0 pr-2">
               <div class="flex items-center gap-2 mb-1 flex-wrap">
                 <span class="text-xs font-bold text-white truncate">${r.store}</span>
-                <span class="text-[10px] px-2 py-0.5 rounded-full font-medium bg-indigo-950 text-indigo-300 border border-indigo-800/60">
+                <span class="text-[10px] px-2 py-0.5 rounded font-medium bg-neutral-800 text-neutral-300">
                   ${r.category || '経費'}
                 </span>
-                <span class="text-[10px] px-2 py-0.5 rounded-full font-medium bg-emerald-950 text-emerald-300 border border-emerald-800/60">
+                <span class="text-[10px] px-2 py-0.5 rounded font-medium bg-neutral-800 text-neutral-400">
                   ${r.paymentMethod || '現金'}
                 </span>
               </div>
-              <p class="text-[11px] text-slate-300 font-medium mt-1 truncate">${displayMemo}</p>
-              <div class="text-[10px] text-slate-500 mt-1.5">${cleanDate}</div>
+              <p class="text-xs text-neutral-300 font-medium mt-1 truncate">${displayMemo}</p>
+              <div class="text-[10px] text-neutral-500 mt-1.5">${cleanDate}</div>
             </div>
             <div class="text-right flex flex-col justify-between items-end">
-              <span class="text-base font-bold text-white tracking-tight">¥${Number(r.total).toLocaleString()}</span>
-              <button class="btn-delete-record text-slate-500 hover:text-rose-400 p-1 mt-2 transition" data-id="${r.id}" title="削除">
+              <span class="text-sm font-bold text-white tracking-tight">¥${Number(r.total).toLocaleString()}</span>
+              <button class="btn-delete-record text-neutral-500 hover:text-rose-400 p-1 mt-2 transition" data-id="${r.id}" title="削除">
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
               </button>
             </div>
@@ -183,10 +187,10 @@
     const maxVal = sortedEntries.length > 0 ? sortedEntries[0][1] : 1;
 
     let html = `
-      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-        <h4 class="text-xs font-bold text-slate-300 mb-3 flex items-center justify-between">
-          <span>集計内訳</span>
-          <span class="text-[10px] text-slate-500 font-normal">合計: ¥${sortedEntries.reduce((s, e) => s + e[1], 0).toLocaleString()}</span>
+      <div class="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
+        <h4 class="text-xs font-bold text-neutral-300 mb-3 flex items-center justify-between">
+          <span>集計</span>
+          <span class="text-[10px] text-neutral-500 font-normal">合計: ¥${sortedEntries.reduce((s, e) => s + e[1], 0).toLocaleString()}</span>
         </h4>
         <div class="space-y-2.5">
     `;
@@ -196,11 +200,11 @@
       html += `
         <div>
           <div class="flex justify-between items-center text-xs mb-1">
-            <span class="text-slate-300 font-medium truncate max-w-[200px]">${label}</span>
+            <span class="text-neutral-300 font-medium truncate max-w-[200px]">${label}</span>
             <span class="text-white font-bold tracking-tight">¥${sum.toLocaleString()}</span>
           </div>
-          <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-            <div class="bg-indigo-500 h-1.5 rounded-full transition-all duration-500" style="width: ${percentage}%"></div>
+          <div class="w-full bg-neutral-800 rounded-full h-1 overflow-hidden">
+            <div class="bg-white h-1 rounded-full transition-all duration-500" style="width: ${percentage}%"></div>
           </div>
         </div>
       `;
@@ -209,43 +213,38 @@
     analyticsBreakdown.innerHTML = html;
   }
 
-  document.querySelectorAll(".analytics-filter-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".analytics-filter-btn").forEach(b => {
-        b.className = "analytics-filter-btn px-3 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-slate-900 text-slate-400 border border-slate-800";
-      });
-      btn.className = "analytics-filter-btn px-3 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-indigo-500/20 text-indigo-300 border border-indigo-500/40";
-      currentFilter = btn.getAttribute("data-filter");
-      renderAllViews();
-    });
-  });
+  // スプレッドシート同期関数（スケルトン表示を適用）
+  async function syncSheetsWithSkeleton() {
+    const gasUrl = AppStorage.getGasUrl();
+    if (!gasUrl) return;
 
-  btnSyncSheets.addEventListener("click", async () => {
-    loaderOverlay.classList.remove("hidden");
-    particleSphere.start();
-    document.getElementById("loader-text").textContent = "仕訳帳から最新データを同期中...";
+    skeletonContainer.classList.remove("hidden");
+    recordsContainer.classList.add("hidden");
 
     try {
       const ssRecords = await AppStorage.fetchFromGoogleSheets(currentMode);
       AppStorage.setAll(ssRecords);
-      particleSphere.stop();
-      loaderOverlay.classList.add("hidden");
       renderAllViews();
-      alert(`スプレッドシートと同期しました（${ssRecords.length}件の仕訳を反映）。`);
     } catch (err) {
-      particleSphere.stop();
-      loaderOverlay.classList.add("hidden");
-      alert(err.message || "取得に失敗しました。");
+      console.warn("Auto-sync failed:", err);
+    } finally {
+      skeletonContainer.classList.add("hidden");
+      recordsContainer.classList.remove("hidden");
     }
+  }
+
+  btnSyncSheets.addEventListener("click", async () => {
+    await syncSheetsWithSkeleton();
   });
 
+  // レシート撮影（Particle Sphereを適用）
   cameraInput.addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     loaderOverlay.classList.remove("hidden");
     particleSphere.start();
-    document.getElementById("loader-text").textContent = "Gemini AIで解析中...";
+    document.getElementById("loader-text").textContent = "Gemini AIでレシートを解析中...";
 
     try {
       const extracted = await OCRProcessor.processImage(file);
@@ -287,14 +286,14 @@
     currentWorkingItems.forEach((item, index) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td class="py-1.5 px-3">
-          <input type="text" class="item-name-input w-full bg-transparent text-white focus:bg-slate-800 rounded px-1.5 py-0.5 outline-none" value="${item.name}" data-index="${index}">
+        <td class="py-2 px-3">
+          <input type="text" class="item-name-input w-full bg-transparent text-white focus:bg-neutral-800 rounded px-1.5 py-0.5 outline-none" value="${item.name}" data-index="${index}">
         </td>
-        <td class="py-1.5 px-3">
-          <input type="number" class="item-price-input w-full bg-transparent text-right font-medium text-white focus:bg-slate-800 rounded px-1.5 py-0.5 outline-none" value="${item.price}" data-index="${index}">
+        <td class="py-2 px-3">
+          <input type="number" class="item-price-input w-full bg-transparent text-right font-medium text-white focus:bg-neutral-800 rounded px-1.5 py-0.5 outline-none" value="${item.price}" data-index="${index}">
         </td>
-        <td class="py-1.5 px-2 text-center">
-          <button type="button" class="btn-remove-item text-slate-500 hover:text-rose-400 p-1" data-index="${index}">
+        <td class="py-2 px-2 text-center">
+          <button type="button" class="btn-remove-item text-neutral-500 hover:text-rose-400 p-1" data-index="${index}">
             <i data-lucide="minus-circle" class="w-3.5 h-3.5"></i>
           </button>
         </td>
@@ -360,16 +359,21 @@
       paymentMethod: formPaymentMethod.value
     };
 
-    loaderOverlay.classList.remove("hidden");
-    particleSphere.start();
-    document.getElementById("loader-text").textContent = "3帳簿へ記帳中...";
-
-    await AppStorage.saveRecord(record);
-
-    particleSphere.stop();
-    loaderOverlay.classList.add("hidden");
     closeEditModal();
-    renderAllViews();
+    // 保存中はスケルトンUIを表示して非同期処理
+    skeletonContainer.classList.remove("hidden");
+    recordsContainer.classList.add("hidden");
+
+    try {
+      await AppStorage.saveRecord(record);
+      await syncSheetsWithSkeleton();
+    } catch (e) {
+      alert("保存に失敗しました: " + e.message);
+    } finally {
+      skeletonContainer.classList.add("hidden");
+      recordsContainer.classList.remove("hidden");
+      renderAllViews();
+    }
   });
 
   modalBtnClose.addEventListener("click", closeEditModal);
@@ -389,6 +393,7 @@
     AppStorage.setVisionKey(settingVisionKey.value);
     settingsModal.classList.add("hidden");
     alert("設定を保存しました。");
+    syncSheetsWithSkeleton();
   });
 
   btnExportCsv.addEventListener("click", () => {
@@ -397,4 +402,7 @@
 
   initDropdowns();
   setMode("business");
+
+  // ★ アプリを開いた時にスプレッドシートから自動同期を実行
+  syncSheetsWithSkeleton();
 });
