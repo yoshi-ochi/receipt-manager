@@ -16,7 +16,7 @@
 </head>
 <body class="bg-black text-neutral-100 min-h-screen pb-28 antialiased selection:bg-neutral-800">
 
-  <!-- Instagram Header -->
+  <!-- Header -->
   <header class="sticky top-0 z-30 bg-black/90 backdrop-blur-md border-b border-neutral-800 px-4 py-3 flex items-center justify-between">
     <div class="flex items-center space-x-2">
       <div class="w-7 h-7 rounded-lg bg-neutral-900 border border-neutral-700 flex items-center justify-center font-bold text-xs text-white">
@@ -24,12 +24,12 @@
       </div>
       <div>
         <h1 class="text-sm font-semibold tracking-tight text-white leading-none">Receipt Manager</h1>
-        <p class="text-[10px] text-neutral-400 mt-0.5">青色申告 3帳簿連携</p>
+        <p class="text-[10px] text-neutral-400 mt-0.5" id="header-subtitle">青色申告 (立替 3帳簿連携)</p>
       </div>
     </div>
     
     <div class="flex items-center space-x-2">
-      <button id="btn-sync-sheets" class="p-2 rounded-full hover:bg-neutral-900 text-neutral-300 transition active:scale-95" title="スプレッドシート同期">
+      <button id="btn-sync-sheets" class="p-2 rounded-full hover:bg-neutral-900 text-neutral-300 transition active:scale-95" title="同期">
         <i data-lucide="refresh-cw" class="w-4 h-4"></i>
       </button>
       <button id="btn-sync-settings" class="p-2 rounded-full hover:bg-neutral-900 text-neutral-300 transition active:scale-95" title="設定">
@@ -41,11 +41,11 @@
     </div>
   </header>
 
-  <!-- Segmented Switch (Instagram Tab Style) -->
+  <!-- Segmented Switch (事業用 vs 個人用) -->
   <div class="px-4 pt-3">
     <div class="grid grid-cols-2 p-0.5 bg-neutral-900 rounded-lg border border-neutral-800 text-xs">
       <button id="tab-business" class="py-2 font-semibold rounded-md transition-all duration-200 bg-neutral-800 text-white shadow-sm">
-        事業用 (複式簿記)
+        事業用 (青色申告立替)
       </button>
       <button id="tab-personal" class="py-2 font-semibold rounded-md transition-all duration-200 text-neutral-400 hover:text-white">
         個人用 (家計簿)
@@ -59,15 +59,15 @@
     <button class="analytics-filter-btn px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-neutral-900 text-neutral-300 border border-neutral-800" data-filter="month">月別</button>
     <button class="analytics-filter-btn px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-neutral-900 text-neutral-300 border border-neutral-800" data-filter="week">週別</button>
     <button class="analytics-filter-btn px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-neutral-900 text-neutral-300 border border-neutral-800" data-filter="store">店舗別</button>
-    <button class="analytics-filter-btn px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-neutral-900 text-neutral-300 border border-neutral-800" data-filter="category">科目別</button>
+    <button class="analytics-filter-btn px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-neutral-900 text-neutral-300 border border-neutral-800" data-filter="category" id="btn-filter-category">科目別</button>
   </div>
 
-  <!-- Main Container -->
+  <!-- Main Feed -->
   <main class="px-4 py-3 max-w-lg mx-auto">
     <section id="summary-container" class="mb-4"></section>
     <section id="analytics-breakdown-container" class="mb-4 space-y-2 hidden"></section>
 
-    <!-- Skeleton Loader (for Sheets Sync) -->
+    <!-- Skeleton Loader -->
     <section id="skeleton-container" class="space-y-3 hidden">
       <div class="skeleton-box h-20 rounded-xl"></div>
       <div class="skeleton-box h-20 rounded-xl"></div>
@@ -75,14 +75,14 @@
     </section>
 
     <div class="flex items-center justify-between mb-2 mt-4">
-      <h3 class="text-xs font-semibold text-neutral-400 tracking-wider">仕訳一覧</h3>
+      <h3 class="text-xs font-semibold text-neutral-400 tracking-wider" id="list-section-title">仕訳一覧</h3>
       <span id="record-count-badge" class="text-[11px] text-neutral-400 bg-neutral-900 px-2 py-0.5 rounded border border-neutral-800">0件</span>
     </div>
     
     <section id="records-container" class="space-y-2.5"></section>
   </main>
 
-  <!-- Camera Action Bar (Instagram Bottom Bar style) -->
+  <!-- Camera Action Button -->
   <div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black via-black/90 to-transparent pointer-events-none z-20 flex justify-center pb-safe">
     <label for="camera-input" class="pointer-events-auto flex items-center justify-center space-x-2 bg-white hover:bg-neutral-200 text-black font-semibold py-3 px-6 rounded-full shadow-lg active:scale-95 transition cursor-pointer">
       <i data-lucide="camera" class="w-5 h-5"></i>
@@ -91,7 +91,7 @@
     <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden">
   </div>
 
-  <!-- Particle Sphere Loader (For AI Parsing) -->
+  <!-- AI Particle Sphere Loader -->
   <div id="loader-overlay" class="fixed inset-0 bg-black/95 backdrop-blur-md z-50 flex flex-col items-center justify-center hidden">
     <div class="particle-sphere-wrapper relative flex items-center justify-center">
       <canvas id="particle-sphere-canvas" width="280" height="280" class="w-[240px] h-[240px]"></canvas>
@@ -99,16 +99,16 @@
     <p id="loader-text" class="text-xs font-medium tracking-wide text-neutral-300 mt-4 animate-pulse">Gemini AIでレシートを精密解析中...</p>
   </div>
 
-  <!-- Edit & Confirm Modal (Instagram Bottom Sheet Style) -->
+  <!-- Confirmation Modal -->
   <div id="edit-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
     <div class="bg-neutral-900 border border-neutral-800 w-full max-w-lg rounded-t-2xl sm:rounded-2xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
       <div class="px-5 py-3.5 border-b border-neutral-800 flex items-center justify-between">
         <div>
           <h2 class="text-sm font-bold text-white flex items-center gap-1.5">
             <i data-lucide="receipt" class="w-4 h-4 text-neutral-300"></i>
-            レシート確認・仕訳修正
+            レシート確認・修正
           </h2>
-          <p class="text-[11px] text-neutral-400 mt-0.5">3帳簿（仕訳帳・元帳・出納帳）への自動展開</p>
+          <p class="text-[11px] text-neutral-400 mt-0.5" id="modal-mode-subtitle">3帳簿（事業主借）への自動展開</p>
         </div>
         <button id="modal-btn-close" class="p-1 rounded-full text-neutral-400 hover:text-white">
           <i data-lucide="x" class="w-5 h-5"></i>
@@ -116,7 +116,6 @@
       </div>
 
       <div class="p-5 overflow-y-auto space-y-4 text-xs">
-        <!-- 修正した日付 & 店舗ボックス -->
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-[11px] font-medium text-neutral-400 mb-1">取引日</label>
@@ -129,18 +128,39 @@
         </div>
 
         <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-[11px] font-medium text-neutral-400 mb-1">借方科目（費用）</label>
-            <select id="form-business-category" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500"></select>
+          <!-- 事業用科目選択（事業用時） -->
+          <div id="group-business-category">
+            <label class="block text-[11px] font-medium text-neutral-400 mb-1">借方勘定科目</label>
+            <select id="form-business-category" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
+              <option value="旅費交通費">旅費交通費 (ガソリン/交通)</option>
+              <option value="消耗品費">消耗品費 (日用品/物品)</option>
+              <option value="接待交際費">接待交際費</option>
+              <option value="通信費">通信費</option>
+              <option value="雑費">雑費</option>
+            </select>
           </div>
+
+          <!-- 個人用ジャンル選択（個人用時） -->
+          <div id="group-personal-genre" class="hidden">
+            <label class="block text-[11px] font-medium text-neutral-400 mb-1">家計簿ジャンル</label>
+            <select id="form-personal-genre" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
+              <option value="食品">食品 (食費/カフェ/スーパー)</option>
+              <option value="日用品">日用品 (日用雑貨/消耗品)</option>
+              <option value="交通費">交通費 (ガソリン/電車/高速)</option>
+              <option value="宿泊費">宿泊費 (ホテル/宿)</option>
+              <option value="娯楽">娯楽 (レジャー/書籍/ホビー)</option>
+              <option value="その他">その他</option>
+            </select>
+          </div>
+
           <div>
-            <label class="block text-[11px] font-medium text-neutral-400 mb-1">決済手段（貸方科目）</label>
+            <label class="block text-[11px] font-medium text-neutral-400 mb-1" id="label-payment">立替決済手段</label>
             <select id="form-payment-method" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
-              <option value="現金">現金（出納帳連動）</option>
-              <option value="クレジットカード">クレジットカード（未払金）</option>
-              <option value="PayPay">PayPay</option>
-              <option value="AEON PAY">AEON PAY</option>
-              <option value="モバイルEneKey">モバイルEneKey</option>
+              <option value="クレジットカード">クレジットカード (個人立替)</option>
+              <option value="PayPay">PayPay (個人立替)</option>
+              <option value="AEON PAY">AEON PAY (個人立替)</option>
+              <option value="モバイルEneKey">モバイルEneKey (個人立替)</option>
+              <option value="現金">現金 (個人立替)</option>
             </select>
           </div>
         </div>
@@ -173,7 +193,7 @@
 
         <div>
           <label class="block text-[11px] font-medium text-neutral-400 mb-1">摘要 / メモ</label>
-          <input type="text" id="form-memo" placeholder="事業利用メモ" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
+          <input type="text" id="form-memo" placeholder="利用メモ" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
         </div>
       </div>
 
@@ -182,7 +202,7 @@
           キャンセル
         </button>
         <button id="modal-btn-save" class="flex-1 py-3 rounded-lg bg-white text-black font-bold text-xs hover:bg-neutral-200 transition flex items-center justify-center gap-1.5 active:scale-98">
-          <i data-lucide="check" class="w-4 h-4"></i> 3帳簿へ保存・記帳
+          <i data-lucide="check" class="w-4 h-4"></i> 保存・記帳
         </button>
       </div>
     </div>
@@ -200,7 +220,7 @@
           <input type="password" id="setting-vision-key" placeholder="AQ... または AIza..." class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
         </div>
         <div>
-          <label class="block text-xs font-semibold text-neutral-300 mb-1">GAS Web App URL (3帳簿スプシ連動)</label>
+          <label class="block text-xs font-semibold text-neutral-300 mb-1">GAS Web App URL</label>
           <input type="url" id="setting-gas-url" placeholder="https://script.google.com/macros/s/.../exec" class="w-full h-10 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-neutral-500">
         </div>
       </div>

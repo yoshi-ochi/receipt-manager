@@ -1,5 +1,5 @@
 ﻿document.addEventListener("DOMContentLoaded", async () => {
-  let currentMode = "business";
+  let currentMode = "business"; // "business" | "personal"
   let currentFilter = "all";
   let currentWorkingItems = [];
   let confirmedTotalAmount = 0;
@@ -7,6 +7,10 @@
 
   const tabBusiness = document.getElementById("tab-business");
   const tabPersonal = document.getElementById("tab-personal");
+  const headerSubtitle = document.getElementById("header-subtitle");
+  const listSectionTitle = document.getElementById("list-section-title");
+  const btnFilterCategory = document.getElementById("btn-filter-category");
+
   const recordsContainer = document.getElementById("records-container");
   const summaryContainer = document.getElementById("summary-container");
   const analyticsBreakdown = document.getElementById("analytics-breakdown-container");
@@ -20,6 +24,7 @@
   const modalBtnClose = document.getElementById("modal-btn-close");
   const modalBtnCancel = document.getElementById("modal-btn-cancel");
   const modalBtnSave = document.getElementById("modal-btn-save");
+  const modalModeSubtitle = document.getElementById("modal-mode-subtitle");
 
   const formDate = document.getElementById("form-date");
   const formStore = document.getElementById("form-store");
@@ -28,8 +33,12 @@
   const itemsTableBody = document.getElementById("items-table-body");
   const btnAddItemRow = document.getElementById("btn-add-item-row");
 
+  const groupBusinessCategory = document.getElementById("group-business-category");
+  const groupPersonalGenre = document.getElementById("group-personal-genre");
   const formBusinessCategory = document.getElementById("form-business-category");
+  const formPersonalGenre = document.getElementById("form-personal-genre");
   const formPaymentMethod = document.getElementById("form-payment-method");
+  const labelPayment = document.getElementById("label-payment");
 
   const btnSyncSettings = document.getElementById("btn-sync-settings");
   const btnSyncSheets = document.getElementById("btn-sync-sheets");
@@ -40,24 +49,20 @@
   const settingVisionKey = document.getElementById("setting-vision-key");
   const btnExportCsv = document.getElementById("btn-export-csv");
 
-  function initDropdowns() {
-    formBusinessCategory.innerHTML = "";
-    APP_CONFIG.BLUE_TAX_COLUMNS.slice(1).forEach(col => {
-      const opt = document.createElement("option");
-      opt.value = col.name;
-      opt.textContent = `${col.name} (${col.type === 'expense' ? '経費' : '収入/原価'})`;
-      formBusinessCategory.appendChild(opt);
-    });
-  }
-
   function setMode(mode) {
     currentMode = mode;
     if (mode === "business") {
       tabBusiness.className = "py-2 font-semibold rounded-md transition-all duration-200 bg-neutral-800 text-white shadow-sm";
       tabPersonal.className = "py-2 font-semibold rounded-md transition-all duration-200 text-neutral-400 hover:text-white";
+      headerSubtitle.textContent = "青色申告 (立替 3帳簿連携)";
+      listSectionTitle.textContent = "仕訳一覧 (事業主借)";
+      btnFilterCategory.textContent = "科目別";
     } else {
       tabPersonal.className = "py-2 font-semibold rounded-md transition-all duration-200 bg-neutral-800 text-white shadow-sm";
       tabBusiness.className = "py-2 font-semibold rounded-md transition-all duration-200 text-neutral-400 hover:text-white";
+      headerSubtitle.textContent = "プライベート支出 (個人家計簿)";
+      listSectionTitle.textContent = "支出明細一覧";
+      btnFilterCategory.textContent = "ジャンル別";
     }
     renderAllViews();
   }
@@ -77,23 +82,24 @@
   function renderAllViews() {
     const allRecords = AppStorage.getAll()
       .filter(r => r.mode === currentMode)
-      .sort((a, b) => new Date(b.date) - new Date(a.date)); // 日付降順で最新を手前に表示
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
 
     const totalAmount = allRecords.reduce((sum, r) => sum + Number(r.total || 0), 0);
     recordCountBadge.textContent = `${allRecords.length}件`;
 
-    // Instagram Card Style Summary
+    const titleText = currentMode === "business" ? "青色申告 立替総支出" : "個人支出 合計";
+
     summaryContainer.innerHTML = `
       <div class="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
         <div class="flex justify-between items-start">
           <div>
             <p class="text-[10px] font-semibold tracking-wider uppercase text-neutral-400">
-              青色申告 対象総支出
+              ${titleText}
             </p>
             <h2 class="text-2xl font-black text-white mt-1 tracking-tight">¥${totalAmount.toLocaleString()}</h2>
           </div>
           <span class="text-[11px] bg-neutral-800 text-neutral-300 px-2.5 py-1 rounded-full font-medium">
-            ${allRecords.length} 投稿 / 仕訳
+            ${allRecords.length} 投稿 / 明細
           </span>
         </div>
       </div>
@@ -110,18 +116,19 @@
       recordsContainer.innerHTML = `
         <div class="text-center py-14 px-4 border border-dashed border-neutral-800 rounded-xl bg-neutral-950">
           <i data-lucide="receipt" class="w-8 h-8 text-neutral-600 mx-auto mb-2"></i>
-          <p class="text-xs font-medium text-neutral-400">記帳されたレシートがありません</p>
+          <p class="text-xs font-medium text-neutral-400">${currentMode === "business" ? "仕訳記録がありません" : "家計簿の記録がありません"}</p>
         </div>
       `;
       lucide.createIcons();
       return;
     }
 
-    // Instagram Feed Style List Item
     recordsContainer.innerHTML = allRecords.map(r => {
       const cleanDate = formatDisplayDate(r.date);
       let displayMemo = (r.memo || "").replace(new RegExp(`^${r.store}\\s*`, "i"), "").trim();
       if (!displayMemo) displayMemo = "内訳なし";
+
+      const tagLabel = currentMode === "business" ? (r.category || "消耗品費") : (r.genre || r.category || "日用品");
 
       return `
         <div class="bg-neutral-900 border border-neutral-800 rounded-xl p-3.5 hover:border-neutral-700 transition">
@@ -130,10 +137,10 @@
               <div class="flex items-center gap-2 mb-1 flex-wrap">
                 <span class="text-xs font-bold text-white truncate">${r.store}</span>
                 <span class="text-[10px] px-2 py-0.5 rounded font-medium bg-neutral-800 text-neutral-300">
-                  ${r.category || '経費'}
+                  ${tagLabel}
                 </span>
                 <span class="text-[10px] px-2 py-0.5 rounded font-medium bg-neutral-800 text-neutral-400">
-                  ${r.paymentMethod || '現金'}
+                  ${currentMode === "business" ? "事業主借 (" + (r.paymentMethod || "立替") + ")" : (r.paymentMethod || "決済")}
                 </span>
               </div>
               <p class="text-xs text-neutral-300 font-medium mt-1 truncate">${displayMemo}</p>
@@ -178,7 +185,7 @@
       } else if (currentFilter === "store") {
         key = r.store || "不明店";
       } else if (currentFilter === "category") {
-        key = r.category || "未分類";
+        key = currentMode === "business" ? (r.category || "未分類") : (r.genre || r.category || "その他");
       }
       grouped[key] = (grouped[key] || 0) + Number(r.total || 0);
     });
@@ -189,7 +196,7 @@
     let html = `
       <div class="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
         <h4 class="text-xs font-bold text-neutral-300 mb-3 flex items-center justify-between">
-          <span>集計</span>
+          <span>集計内訳</span>
           <span class="text-[10px] text-neutral-500 font-normal">合計: ¥${sortedEntries.reduce((s, e) => s + e[1], 0).toLocaleString()}</span>
         </h4>
         <div class="space-y-2.5">
@@ -213,7 +220,6 @@
     analyticsBreakdown.innerHTML = html;
   }
 
-  // スプレッドシート同期関数（スケルトン表示を適用）
   async function syncSheetsWithSkeleton() {
     const gasUrl = AppStorage.getGasUrl();
     if (!gasUrl) return;
@@ -223,7 +229,9 @@
 
     try {
       const ssRecords = await AppStorage.fetchFromGoogleSheets(currentMode);
-      AppStorage.setAll(ssRecords);
+      if (ssRecords && ssRecords.length > 0) {
+        AppStorage.setAll(ssRecords);
+      }
       renderAllViews();
     } catch (err) {
       console.warn("Auto-sync failed:", err);
@@ -237,7 +245,6 @@
     await syncSheetsWithSkeleton();
   });
 
-  // レシート撮影（Particle Sphereを適用）
   cameraInput.addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -264,8 +271,21 @@
     formDate.value = formatDisplayDate(data.date);
     formStore.value = data.store || "";
     formMemo.value = data.memo || "";
-    formPaymentMethod.value = data.paymentMethod || "現金";
-    formBusinessCategory.value = data.suggestedCategory || "消耗品費";
+    formPaymentMethod.value = data.paymentMethod || "クレジットカード";
+
+    if (currentMode === "business") {
+      groupBusinessCategory.classList.remove("hidden");
+      groupPersonalGenre.classList.add("hidden");
+      formBusinessCategory.value = data.suggestedCategory || "消耗品費";
+      modalModeSubtitle.textContent = "青色申告 3帳簿（貸方: 事業主借）へ自動展開";
+      labelPayment.textContent = "立替決済手段";
+    } else {
+      groupBusinessCategory.classList.add("hidden");
+      groupPersonalGenre.classList.remove("hidden");
+      formPersonalGenre.value = data.suggestedGenre || "日用品";
+      modalModeSubtitle.textContent = "個人用家計簿シートへ自動追加";
+      labelPayment.textContent = "決済手段";
+    }
 
     confirmedTotalAmount = Number(data.totalAmount || 0);
     currentWorkingItems = data.items ? [...data.items] : [];
@@ -355,12 +375,12 @@
       memo: formMemo.value.trim(),
       items: currentWorkingItems,
       total: confirmedTotalAmount,
-      category: formBusinessCategory.value,
+      category: currentMode === "business" ? formBusinessCategory.value : formPersonalGenre.value,
+      genre: formPersonalGenre.value,
       paymentMethod: formPaymentMethod.value
     };
 
     closeEditModal();
-    // 保存中はスケルトンUIを表示して非同期処理
     skeletonContainer.classList.remove("hidden");
     recordsContainer.classList.add("hidden");
 
@@ -382,6 +402,17 @@
   tabBusiness.addEventListener("click", () => setMode("business"));
   tabPersonal.addEventListener("click", () => setMode("personal"));
 
+  document.querySelectorAll(".analytics-filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".analytics-filter-btn").forEach(b => {
+        b.className = "analytics-filter-btn px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-neutral-900 text-neutral-300 border border-neutral-800";
+      });
+      btn.className = "analytics-filter-btn px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap bg-white text-black";
+      currentFilter = btn.getAttribute("data-filter");
+      renderAllViews();
+    });
+  });
+
   btnSyncSettings.addEventListener("click", () => {
     settingGasUrl.value = AppStorage.getGasUrl();
     settingVisionKey.value = AppStorage.getVisionKey();
@@ -400,9 +431,6 @@
     AppStorage.exportToCsv(currentMode);
   });
 
-  initDropdowns();
   setMode("business");
-
-  // ★ アプリを開いた時にスプレッドシートから自動同期を実行
   syncSheetsWithSkeleton();
 });

@@ -1,7 +1,5 @@
 ﻿/**
- * Receipt OCR Processor (Gemini 3.8 Flash Client)
- * - ガソリン系: 旅費交通費 / 〇L(〇円/L)
- * - その他: 消耗品費 / 〇点(内訳)
+ * Receipt OCR Processor (Business & Personal Classification)
  */
 const OCRProcessor = {
   async processImage(file) {
@@ -17,27 +15,28 @@ const OCRProcessor = {
 
   async callGeminiAPI(base64Image, apiKey) {
     const promptText = `
-添付された日本のレシート・領収書画像を解析し、正確なJSONを抽出してください。
+添付された日本のレシート・領収書画像を解析し、指定のJSONを抽出してください。
 
-【抽出およびフォーマットルール】
+【抽出ルール】
 1. date: 取引日 (YYYY-MM-DD)
-2. store: 店舗・企業名（ブランド名+支店・SS名。例: "EneJet 盛岡北部SS", "ユニクロ 盛岡インター店"）
-3. totalAmount: 実際に決済・支払われた最終合計金額 (整数)
-4. paymentMethod: 決済手段 ("現金", "クレジットカード", "PayPay", "AEON PAY", "モバイルEneKey" のいずれか)
-5. suggestedCategory:
-   - ガソリンスタンド、給油、ENEOS、出光、コスモ、高速料金、JR・電車、交通系の場合: 必ず "旅費交通費"
-   - それ以外の一般的な物品購入の場合: 原則 "消耗品費"
-6. items: 購入明細リスト [{ "name": "品名", "price": 金額(整数) }]
-7. memo (摘要フォーマット):
-   - 【ガソリン・軽油等の給油の場合】: 
-     給油量(L)と単価(円/L)を読み取り、「〇〇給油 〇〇L (〇〇円/L)」の形式にする。
-     例: "レギュラー給油 22.18L (153円/L)"、"ハイオク給油 35.00L (168円/L)"
-   - 【商品が1点のみの場合】: 
-     "1点 (商品名)" の形式にする。
-     例: "1点 (エアリズムシームレスボクサー)"
-   - 【商品が複数点（2点以上）ある場合】: 
-     "〇点 (商品名1、商品名2、商品名3...)" の形式にする。
-     例: "3点 (ノート、消しゴム、替芯)"
+2. store: 店舗・会社名（ブランド名+支店名/SS名。例: "ダイソー 仙台長町店", "セブン-イレブン", "東横イン", "EneJet 盛岡北部SS"）
+3. totalAmount: 支払合計金額 (整数)
+4. paymentMethod: 決済手段 ("現金", "クレジットカード", "PayPay", "AEON PAY", "モバイルEneKey" 等)
+5. suggestedCategory (事業用科目): 
+   - ガソリン・高速・鉄道・タクシー: "旅費交通費"
+   - それ以外: "消耗品費"
+6. suggestedGenre (個人用家計簿ラベル): 
+   - スーパー、コンビニ、飲食店、カフェ、食品: "食品"
+   - ドラッグストア、100均、日用雑貨、ホームセンター: "日用品"
+   - ガソリン、電車、バス、タクシー、高速道路: "交通費"
+   - ホテル、旅館、宿泊施設: "宿泊費"
+   - 書籍、ゲーム、映画、レジャー、アミューズメント: "娯楽"
+   - その他: "その他"
+7. memo:
+   - ガソリンの場合: "〇〇給油 〇〇L (〇〇円/L)"
+   - 1点の場合: "1点 (商品名)"
+   - 複数点の場合: "〇点 (商品名1、商品名2...)"
+8. items: 購入明細リスト [{ "name": "品名", "price": 金額(整数) }]
 `;
 
     const requestBody = {
@@ -64,6 +63,7 @@ const OCRProcessor = {
             totalAmount: { type: "INTEGER" },
             paymentMethod: { type: "STRING" },
             suggestedCategory: { type: "STRING" },
+            suggestedGenre: { type: "STRING" },
             memo: { type: "STRING" },
             items: {
               type: "ARRAY",
@@ -77,7 +77,7 @@ const OCRProcessor = {
               }
             }
           },
-          required: ["date", "store", "totalAmount", "paymentMethod", "suggestedCategory", "items", "memo"]
+          required: ["date", "store", "totalAmount", "paymentMethod", "suggestedCategory", "suggestedGenre", "items", "memo"]
         }
       }
     };
@@ -113,33 +113,19 @@ const OCRProcessor = {
 
         const result = JSON.parse(candidateText);
 
-        // クライアント側でもガソリン判定のフォールバックを二重補強
         const storeName = result.store || '';
-        const isGasStation = /ENEOS|EneJet|出光|apollostation|コスモ|シェル|キグナス|給油|SS|ガソリン/i.test(storeName);
-        
-        const finalCategory = isGasStation ? '旅費交通費' : (result.suggestedCategory || '消耗品費');
-
-        // 摘要がプロンプトで漏れた場合のフォーマット整形
-        let finalMemo = result.memo || '';
-        const items = Array.isArray(result.items) ? result.items : [];
-        if (!finalMemo || (!isGasStation && !finalMemo.includes('点'))) {
-          if (items.length === 1) {
-            finalMemo = `1点 (${items[0].name})`;
-          } else if (items.length > 1) {
-            const names = items.map(it => it.name).join('、');
-            finalMemo = `${items.length}点 (${names})`;
-          }
-        }
+        const isGas = /ENEOS|EneJet|出光|apollostation|コスモ|給油|SS|ガソリン/i.test(storeName);
+        const finalCategory = isGas ? '旅費交通費' : (result.suggestedCategory || '消耗品費');
 
         return {
           date: result.date || new Date().toISOString().split('T')[0],
           store: result.store || '不明店',
           totalAmount: Number(result.totalAmount) || 0,
-          paymentMethod: result.paymentMethod || '現金',
+          paymentMethod: result.paymentMethod || 'クレジットカード',
           suggestedCategory: finalCategory,
-          suggestedGenre: isGasStation ? '交通費' : '日用品・消耗品',
-          items: items,
-          memo: finalMemo
+          suggestedGenre: result.suggestedGenre || (isGas ? '交通費' : '日用品'),
+          items: Array.isArray(result.items) ? result.items : [],
+          memo: result.memo || ''
         };
 
       } catch (err) {
