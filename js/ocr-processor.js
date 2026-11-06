@@ -1,5 +1,5 @@
 ﻿/**
- * Receipt OCR Processor (Fast Response: 3.5-Flash Default)
+ * Receipt OCR Processor (Multi-Model Quota Fallback)
  */
 const OCRProcessor = {
   async processImage(file) {
@@ -9,8 +9,7 @@ const OCRProcessor = {
       throw new Error("Gemini API key is not configured");
     }
 
-    // アップロード速度向上のため長辺を800pxに圧縮
-    const base64Data = await this.encodeImageToBase64(file, 800);
+    const base64Data = await this.encodeImageToBase64(file, 1024);
     return await this.callGeminiAPI(base64Data, apiKey.trim());
   },
 
@@ -83,14 +82,20 @@ const OCRProcessor = {
       }
     };
 
-    // 高速応答のため 3.5-flash を最優先に設定
-    const targetModels = ['gemini-3.5-flash', 'gemini-3.8-flash'];
+    // クォータ超過時に順次切り替えるモデル候補
+    const candidateModels = [
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite'
+    ];
+
     let lastError = null;
 
-    for (let i = 0; i < targetModels.length; i++) {
-      const model = targetModels[i];
+    for (let i = 0; i < candidateModels.length; i++) {
+      const model = candidateModels[i];
       try {
-        console.log('[OCRProcessor] Requesting Model: ' + model);
+        console.log('[OCRProcessor] Trying Model: ' + model);
         const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(apiKey);
 
         const response = await fetch(endpoint, {
@@ -104,7 +109,15 @@ const OCRProcessor = {
 
         if (!response.ok) {
           const errData = await response.json().catch(function() { return {}; });
-          throw new Error(errData.error && errData.error.message ? errData.error.message : ('HTTP ' + response.status));
+          const errMsg = errData.error && errData.error.message ? errData.error.message : ('HTTP ' + response.status);
+          
+          // 429（クォータ超過）または 404（非対応）の場合は次のモデルへフォールバック
+          if (response.status === 429 || response.status === 404) {
+            console.warn(`[OCRProcessor] ${model} unavailable (${response.status}): ${errMsg}`);
+            lastError = new Error(errMsg);
+            continue;
+          }
+          throw new Error(errMsg);
         }
 
         const data = await response.json();
@@ -114,6 +127,7 @@ const OCRProcessor = {
         }
 
         const result = JSON.parse(candidateText);
+        console.log(`[OCRProcessor] Success using ${model}`);
 
         const storeName = result.store || '';
         const isGas = /ENEOS|EneJet|出光|apollostation|コスモ|給油|SS|ガソリン/i.test(storeName);
@@ -131,12 +145,11 @@ const OCRProcessor = {
         };
 
       } catch (err) {
-        console.warn('[OCRProcessor] ' + model + ' failed:', err);
         lastError = err;
       }
     }
 
-    throw lastError || new Error('Gemini APIへのリクエストに失敗しました。');
+    throw new Error('すべての利用可能モデルでクォータ上限に達しました。\n約3時間後に再試行するか、別アカウントのAPIキーを設定してください。');
   },
 
   encodeImageToBase64(file, maxDimension) {
